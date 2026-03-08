@@ -1,11 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
-import { connect, disconnect } from "get-starknet";
-import { RpcProvider, Contract, type AccountInterface } from "starknet";
+import { RpcProvider, Contract } from "starknet";
 
 const RPC_URL = "https://starknet-mainnet.public.blastapi.io";
 const provider = new RpcProvider({ nodeUrl: RPC_URL });
 
-const ADDRS = {
+export const ADDRS = {
   CORE: "0x00373485f84822c3dcdfbfc273ab262f1ff529c81d5dfbe7115b3bd7489043d8",
   AMM: "0x0777c8b2e7f0d9ca61a551e3c80f99583829541877af8ce8e2722f94914aa09a",
   SY: "0x047da6255df8fd148894bb3fcae5a224171233b269a282f58fc87f5832c48dd5",
@@ -16,12 +15,9 @@ const ADDRS = {
   ETH: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
 };
 
-export { ADDRS };
-
 const ERC20_ABI = [
   { name: "balance_of", type: "function", inputs: [{ name: "account", type: "felt" }], outputs: [{ name: "balance", type: "Uint256" }], stateMutability: "view" },
-  { name: "approve", type: "function", inputs: [{ name: "spender", type: "felt" }, { name: "amount", type: "Uint256" }], outputs: [{ name: "success", type: "felt" }] },
-] as const;
+] as any;
 
 function fmt(raw: bigint, dec = 18, dp = 4): string {
   const d = BigInt(10 ** dec);
@@ -38,56 +34,52 @@ export interface WalletState {
   address: string;
   shortAddress: string;
   connected: boolean;
-  account: AccountInterface | null;
-  balances: {
-    xSTRK: string; STRK: string; ETH: string;
-    SY: string; PT: string; YT: string;
-  };
+  starknet: any;
+  balances: { xSTRK: string; STRK: string; ETH: string; SY: string; PT: string; YT: string };
   loading: boolean;
+}
+
+async function readBal(token: string, addr: string): Promise<bigint> {
+  try {
+    // @ts-ignore
+    const c = new Contract(ERC20_ABI, token, provider);
+    const res = await c.call("balance_of", [addr]);
+    return BigInt((res as any).toString());
+  } catch { return 0n; }
 }
 
 export function useWallet() {
   const [state, setState] = useState<WalletState>({
-    address: "", shortAddress: "", connected: false, account: null,
+    address: "", shortAddress: "", connected: false, starknet: null,
     balances: { xSTRK: "0", STRK: "0", ETH: "0", SY: "0", PT: "0", YT: "0" },
     loading: false,
   });
 
   const fetchBalances = useCallback(async (addr: string) => {
     try {
-      const read = async (token: string) => {
-        const c = new Contract(ERC20_ABI as any, token, provider);
-        const res = await c.balance_of(addr);
-        return BigInt(res.toString());
-      };
       const [xstrk, strk, eth, sy, pt, yt] = await Promise.all([
-        read(ADDRS.XSTRK), read(ADDRS.STRK), read(ADDRS.ETH),
-        read(ADDRS.SY), read(ADDRS.PT), read(ADDRS.YT),
+        readBal(ADDRS.XSTRK, addr), readBal(ADDRS.STRK, addr), readBal(ADDRS.ETH, addr),
+        readBal(ADDRS.SY, addr), readBal(ADDRS.PT, addr), readBal(ADDRS.YT, addr),
       ]);
-      setState(s => ({
-        ...s,
-        balances: {
-          xSTRK: fmt(xstrk), STRK: fmt(strk), ETH: fmt(eth),
-          SY: fmt(sy), PT: fmt(pt), YT: fmt(yt),
-        },
-      }));
-    } catch (e) {
-      console.error("Balance fetch error:", e);
-    }
+      setState(s => ({ ...s, balances: { xSTRK: fmt(xstrk), STRK: fmt(strk), ETH: fmt(eth), SY: fmt(sy), PT: fmt(pt), YT: fmt(yt) } }));
+    } catch (e) { console.error("Balance fetch error:", e); }
   }, []);
 
   const doConnect = useCallback(async () => {
     setState(s => ({ ...s, loading: true }));
     try {
-      const starknet = await connect({ modalMode: "alwaysAsk", modalTheme: "dark" });
-      if (!starknet) { setState(s => ({ ...s, loading: false })); return; }
-      await starknet.enable();
-      const addr = starknet.selectedAddress || "";
+      // Dynamic import to avoid SSR issues
+      const gsn = await import("get-starknet");
+      const sn = await gsn.connect({ modalMode: "alwaysAsk", modalTheme: "dark" });
+      if (!sn) { setState(s => ({ ...s, loading: false })); return; }
+      // get-starknet v4 uses request API
+      const accounts: string[] = await sn.request({ type: "wallet_requestAccounts" });
+      const addr = accounts[0] || "";
       setState(s => ({
         ...s, address: addr, shortAddress: shortAddr(addr),
-        connected: true, account: starknet.account as any, loading: false,
+        connected: true, starknet: sn, loading: false,
       }));
-      fetchBalances(addr);
+      if (addr) fetchBalances(addr);
     } catch (e) {
       console.error("Connect error:", e);
       setState(s => ({ ...s, loading: false }));
@@ -95,15 +87,17 @@ export function useWallet() {
   }, [fetchBalances]);
 
   const doDisconnect = useCallback(async () => {
-    await disconnect();
+    try {
+      const gsn = await import("get-starknet");
+      await gsn.disconnect({ clearLastWallet: true });
+    } catch {}
     setState({
-      address: "", shortAddress: "", connected: false, account: null,
+      address: "", shortAddress: "", connected: false, starknet: null,
       balances: { xSTRK: "0", STRK: "0", ETH: "0", SY: "0", PT: "0", YT: "0" },
       loading: false,
     });
   }, []);
 
-  // Auto-refresh balances every 30s when connected
   useEffect(() => {
     if (!state.connected || !state.address) return;
     const id = setInterval(() => fetchBalances(state.address), 30000);
