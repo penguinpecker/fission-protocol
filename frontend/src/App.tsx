@@ -605,7 +605,7 @@ export default function App() {
                   <div>
                     <div className="text-xs text-muted-foreground">Claimable from YT-xSTRK</div>
                     <div className="text-lg font-mono font-bold text-yield">{w.balances.YT} YT-xSTRK</div>
-                    <div className="text-[10px] text-muted-foreground">≈ $12.08</div>
+                    <div className="text-[10px] text-muted-foreground">from on-chain</div>
                   </div>
                   <Button className="bg-yield hover:bg-yield/90 text-black font-semibold">Claim Yield</Button>
                 </div>
