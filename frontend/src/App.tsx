@@ -176,7 +176,7 @@ function TxToast({ status, hash, onClose }: { status: "pending" | "success" | "e
         <div className="flex-1"><div className="text-sm font-medium">{cfg.title}</div><div className="text-xs text-muted-foreground font-mono">{cfg.desc}</div></div>
         <button onClick={onClose}><X size={12} className="text-muted-foreground" /></button>
       </div>
-      {hash && <a href={`https://starkscan.co/tx/${hash}`} target="_blank" className="flex items-center gap-1 text-[10px] text-primary mt-2 hover:underline"><ExternalLink size={10} />View on Starkscan</a>}
+      {hash && <a href={`https://voyager.online/tx/${hash}`} target="_blank" className="flex items-center gap-1 text-[10px] text-primary mt-2 hover:underline"><ExternalLink size={10} />View on Voyager</a>}
     </div>
   );
 }
@@ -244,8 +244,8 @@ export default function App() {
   const apyColor = tab === "fixed" ? "#34D399" : tab === "yield" ? "#F7931A" : "#5C94FF";
   const priceImpact = parseFloat(amt) > 10000 ? 1.2 : parseFloat(amt) > 1000 ? 0.15 : 0.01;
 
-  const doTx = () => {
-    setTxReview(false); setTxStatus("pending");
+  const doTx = async () => {
+    setTxReview(false); setTxStatus("pending"); try {
     setTimeout(() => { setTxStatus("success"); setAmt(""); }, 2500);
   };
 
@@ -308,11 +308,11 @@ export default function App() {
             </div>
           </div>
           <div className="border border-primary/[0.06] rounded-lg overflow-hidden">
-            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_80px] gap-2 px-4 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wider border-b border-primary/[0.06] bg-secondary/30">
+            <div className="grid grid-cols-[2fr_1fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_80px] gap-2 px-4 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wider border-b border-primary/[0.06] bg-secondary/30">
               <span>Market</span><span>Fixed APY</span><span>Long Yield</span><span>Implied APY</span><span>TVL</span><span>Volume (24h)</span><span>Maturity</span>
             </div>
             {sortedMarkets.map(mk => (
-              <button key={mk.id} onClick={() => { setMkt(mk.id); setPage("trade"); }} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_80px] gap-2 px-4 py-3.5 w-full text-left hover:bg-primary/[0.03] transition-all border-b border-primary/[0.04] last:border-0">
+              <button key={mk.id} onClick={() => { setMkt(mk.id); setPage("trade"); }} className="grid grid-cols-[2fr_1fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_80px] gap-2 px-4 py-3.5 w-full text-left hover:bg-primary/[0.03] transition-all border-b border-primary/[0.04] last:border-0">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: `${mk.accent}12`, color: mk.accent }}>{mk.sym[0]}</div>
                   <div><div className="text-sm font-medium">{mk.sym}</div><div className="text-[10px] text-muted-foreground">{mk.protocol} · {mk.name}</div></div>
@@ -334,7 +334,7 @@ export default function App() {
       {page === "trade" && (
         <div className="flex max-w-[1280px] mx-auto p-5 gap-4" style={{ flexWrap: "wrap" }}>
           {/* LEFT COLUMN */}
-          <div className="flex-1 min-w-[520px] flex flex-col gap-3">
+          <div className="flex-1 min-w-0 flex flex-col gap-3">
             {/* Market selector */}
             <div className="flex gap-px bg-primary/[0.04] rounded-lg overflow-hidden">
               {MARKETS.map(mk => (
@@ -421,11 +421,11 @@ export default function App() {
           </div>
 
           {/* RIGHT COLUMN: Trade Panel */}
-          <div className="w-[360px] min-w-[310px]">
+          <div className="w-full lg:w-[360px] min-w-0">
             <div className="bg-card rounded-lg border border-primary/[0.06] sticky top-16">
               {/* Trade tabs */}
               <Tabs value={tab} onValueChange={setTab}>
-                <TabsList className="w-full grid grid-cols-4 bg-transparent border-b border-primary/[0.06] rounded-none h-auto p-0">
+                <TabsList className="w-full grid grid-cols-2 lg:grid-cols-4 bg-transparent border-b border-primary/[0.06] rounded-none h-auto p-0">
                   {[["fixed", "Fixed", "#34D399"], ["yield", "Long Yield", "#F7931A"], ["lp", "LP", "#5C94FF"], ["mint", "Mint", "#E97880"]].map(([id, label, color]) => (
                     <TabsTrigger key={id} value={id} className="rounded-none border-b-2 border-transparent data-[state=active]:border-current data-[state=active]:bg-transparent py-2.5 text-xs font-semibold" style={{ color: tab === id ? color : undefined }}>
                       {label}
@@ -566,7 +566,7 @@ export default function App() {
               </div>
 
               {/* Stats row */}
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {[["Total Deposited", w.balances.xSTRK + " xSTRK", ""], ["Unrealized PnL", w.balances.SY + " SY", "#34D399"], ["Unclaimed Yield", w.balances.YT + " YT", "#34D399"], ["Positions", "3", ""]].map(([l, v, c], i) => (
                   <div key={i} className="bg-card rounded-lg border border-primary/[0.06] p-3">
                     <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">{l}</div>
@@ -581,11 +581,11 @@ export default function App() {
                   <span className="text-sm font-semibold">Active Positions</span>
                   <Button variant="outline" size="sm" className="text-yield border-yield/20 hover:bg-yield/5 text-xs h-7">Claim All Yield</Button>
                 </div>
-                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-2 text-[9px] text-muted-foreground uppercase tracking-wider border-b border-primary/[0.04]">
+                <div className="grid grid-cols-[2fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-2 text-[9px] text-muted-foreground uppercase tracking-wider border-b border-primary/[0.04]">
                   <span>Position</span><span>Amount</span><span>Value</span><span>APY</span><span>Market</span>
                 </div>
                 {[{token:"PT-xSTRK",amount:w.balances.PT,value:"-",apy:"5.8%",color:"#34D399",market:0},{token:"YT-xSTRK",amount:w.balances.YT,value:"-",apy:"14.3%",color:"#F7931A",market:0},{token:"SY-xSTRK",amount:w.balances.SY,value:"-",apy:"-",color:"#5C94FF",market:0}].filter(p=>p.amount!=="0.0000").map((p, i) => (
-                  <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-3 border-b border-primary/[0.04] last:border-0 hover:bg-primary/[0.02] transition-colors">
+                  <div key={i} className="grid grid-cols-[2fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-3 border-b border-primary/[0.04] last:border-0 hover:bg-primary/[0.02] transition-colors">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold" style={{ background: `${p.color}12`, color: p.color }}>{p.token.slice(0,2)}</div>
                       <span className="text-sm font-medium">{p.token}</span>
@@ -629,7 +629,7 @@ export default function App() {
       <TokenSelector open={tokenModal} onClose={() => setTokenModal(false)} onSelect={setPayToken} current={payToken} />
       <TxReview open={txReview} onClose={() => setTxReview(false)} onConfirm={doTx}
         data={{ payAmt: amt || "0", payToken, rcvAmt: out, rcvToken, apy, apyColor, priceImpact: `${priceImpact < 0.1 ? "<0.01" : priceImpact.toFixed(2)}%`, fee: "0.30%", route: `${payToken} → SY → ${rcvToken}`, minReceived: `${(parseFloat(out || "0") * (1 - slippage/100)).toFixed(4)} ${rcvToken}` }} />
-      {txStatus && <TxToast status={txStatus} hash="pending" onClose={() => setTxStatus(null)} />}
+      {txStatus && <TxToast status={txStatus} hash={w.lastTxHash} onClose={() => setTxStatus(null)} />}
     </div>
   );
 }
