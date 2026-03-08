@@ -192,6 +192,28 @@ export function useWallet() {
     ]);
   }, [sendTx]);
 
+  // STRK → stake via Endur → deposit to SY only (NO split) — 4 calls
+  const stakeAndDeposit = useCallback(async (amount: string) => {
+    const u = toU256Calldata(amount);
+    return sendTx([
+      { contractAddress: ADDRS.STRK, entrypoint: "approve", calldata: [ADDRS.XSTRK, ...u] },
+      { contractAddress: ADDRS.XSTRK, entrypoint: "deposit", calldata: [...u, state.address] },
+      { contractAddress: ADDRS.XSTRK, entrypoint: "approve", calldata: [ADDRS.SY, ...u] },
+      { contractAddress: ADDRS.SY, entrypoint: "deposit", calldata: u },
+    ]);
+  }, [sendTx, state.address]);
+
+  // Add LP: approve SY + PT to AMM, then add_liquidity — 3 calls
+  const addLiquidity = useCallback(async (syAmount: string, ptAmount: string) => {
+    const uSy = toU256Calldata(syAmount);
+    const uPt = toU256Calldata(ptAmount);
+    return sendTx([
+      { contractAddress: ADDRS.SY, entrypoint: "approve", calldata: [ADDRS.AMM, ...uSy] },
+      { contractAddress: ADDRS.PT, entrypoint: "approve", calldata: [ADDRS.AMM, ...uPt] },
+      { contractAddress: ADDRS.AMM, entrypoint: "add_liquidity", calldata: ["0x0", ...uSy, ...uPt] },
+    ]);
+  }, [sendTx]);
+
   // Split SY → PT + YT
   const split = useCallback(async (amount: string) => {
     const u = toU256Calldata(amount);
@@ -219,6 +241,6 @@ export function useWallet() {
 
   return {
     ...state, connect: doConnect, disconnect: doDisconnect, fetchBalances,
-    sendTx, stakeAndSplit, depositAndSplit, depositToSY, split, swapSYForPT, claimYield,
+    sendTx, stakeAndSplit, depositAndSplit, stakeAndDeposit, depositToSY, addLiquidity, split, swapSYForPT, claimYield,
   };
 }

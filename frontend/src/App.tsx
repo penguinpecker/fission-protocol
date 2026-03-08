@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ComposedChart, Line } from "recharts";
 import { useWallet } from "./hooks/useWallet";
 
@@ -321,7 +321,7 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
   const [txStatus, setTxStatus] = useState<"pending" | "success" | "error" | null>(null);
   const [txError, setTxError] = useState("");
   const apyVal = strategy === "pt" ? m.fixedApy : strategy === "yt" ? m.longApy : m.underlyingApy;
-  const rcv = `PT + YT`;
+  const rcv = strategy === "pt" ? `PT-${m.sym}` : strategy === "yt" ? `YT-${m.sym}` : `PT + YT`;
   const out = useMemo(() => { const a = parseFloat(amt); if (!a) return "0.0000"; return a.toFixed(4); }, [amt]);
   const chartData: any[] = strategy === "pt" ? PT_DATA[market] : YIELD_DATA[market];
   const payBal = payToken === "STRK" ? w.balances.STRK : w.balances.xSTRK;
@@ -437,7 +437,7 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
                 </div>
               </div>
               <div style={{ fontSize: 12, marginBottom: 18 }}>
-                {([["APY", `${apyVal}%`, s.color], ["Price Impact", "<0.01%", C.teal], ["Route", payToken === "STRK" ? "STRK → xSTRK → SY → PT + YT" : "xSTRK → SY → PT + YT", C.textSec], ["Fee", "0.30%", C.textSec]] as [string, string, string][]).map(([l, v, c], i) => (
+                {([["APY", `${apyVal}%`, s.color], ["Price Impact", "<0.01%", C.teal], ["Route", payToken === "STRK" ? `STRK → xSTRK → SY → ${strategy === "split" ? "PT + YT" : rcv}` : `xSTRK → SY → ${strategy === "split" ? "PT + YT" : rcv}`, C.textSec], ["Fee", "0.30%", C.textSec]] as [string, string, string][]).map(([l, v, c], i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: i < 3 ? `1px solid ${C.border}` : "none" }}>
                     <span style={{ color: C.textDim, fontWeight: 300 }}>{l}</span><span style={{ fontFamily: mono, fontWeight: 500, color: c, fontSize: 11 }}>{v}</span>
                   </div>
@@ -448,9 +448,17 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
               </button>
               {w.connected && market === 0 && (
                 <div style={{ marginTop: 10, padding: "9px 12px", background: `${C.teal}06`, borderRadius: 8, border: `1px solid ${C.teal}12`, fontSize: 10, color: C.textSec, lineHeight: 1.5, fontWeight: 300 }}>
-                  {payToken === "STRK"
-                    ? `Stakes STRK via Endur → xSTRK → wraps to SY → splits into PT + YT. ${strategy === "pt" ? "You receive PT (fixed yield) + YT." : strategy === "yt" ? "You receive YT (leveraged yield) + PT." : "You receive both to LP or trade."}`
-                    : `Deposits xSTRK → wraps to SY → splits into PT + YT. ${strategy === "pt" ? "You receive PT (fixed yield) + YT." : strategy === "yt" ? "You receive YT (leveraged yield) + PT." : "You receive both to LP or trade."}`}
+                  {strategy === "pt"
+                    ? (payToken === "STRK"
+                      ? "Stakes STRK via Endur → xSTRK → wraps to SY → swaps SY for PT on AMM. You receive PT-xSTRK which is redeemable 1:1 at maturity, locking in a fixed yield."
+                      : "Deposits xSTRK → wraps to SY → swaps SY for PT on AMM. You receive PT-xSTRK which is redeemable 1:1 at maturity, locking in a fixed yield.")
+                    : strategy === "yt"
+                    ? (payToken === "STRK"
+                      ? "Stakes STRK via Endur → xSTRK → wraps to SY → swaps SY for YT on AMM. You receive YT-xSTRK which captures all variable yield until maturity — leveraged long on rates."
+                      : "Deposits xSTRK → wraps to SY → swaps SY for YT on AMM. You receive YT-xSTRK which captures all variable yield until maturity — leveraged long on rates.")
+                    : (payToken === "STRK"
+                      ? "Stakes STRK via Endur → xSTRK → wraps to SY → splits into PT + YT. You receive both tokens to provide LP or trade separately."
+                      : "Deposits xSTRK → wraps to SY → splits into PT + YT. You receive both tokens to provide LP or trade separately.")}
                 </div>
               )}
               {strategy === "split" && (
@@ -470,6 +478,31 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
 
 // ═══════ DASHBOARD ═══════
 function DashboardPage({ w }: { w: ReturnType<typeof useWallet> }) {
+  const [lpSy, setLpSy] = useState(""); const [lpPt, setLpPt] = useState("");
+  const [depositAmt, setDepositAmt] = useState("");
+  const [txStatus, setTxStatus] = useState<"pending" | "success" | "error" | null>(null);
+  const [txError, setTxError] = useState("");
+
+  const doDeposit = async () => {
+    if (!depositAmt || parseFloat(depositAmt) <= 0) return;
+    setTxStatus("pending"); setTxError("");
+    try {
+      const txHash = await w.stakeAndDeposit(depositAmt);
+      if (txHash) { setTxStatus("success"); setDepositAmt(""); }
+      else setTxStatus("error");
+    } catch (e: any) { setTxError(e?.message?.slice(0, 120) || "Failed"); setTxStatus("error"); }
+  };
+
+  const doAddLP = async () => {
+    if (!lpSy || !lpPt || parseFloat(lpSy) <= 0 || parseFloat(lpPt) <= 0) return;
+    setTxStatus("pending"); setTxError("");
+    try {
+      const txHash = await w.addLiquidity(lpSy, lpPt);
+      if (txHash) { setTxStatus("success"); setLpSy(""); setLpPt(""); }
+      else setTxStatus("error");
+    } catch (e: any) { setTxError(e?.message?.slice(0, 120) || "Failed"); setTxStatus("error"); }
+  };
+
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "48px 20px" }}>
       {!w.connected ? (
@@ -482,15 +515,15 @@ function DashboardPage({ w }: { w: ReturnType<typeof useWallet> }) {
       ) : (
         <div>
           <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", marginBottom: 24 }}>Dashboard</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
-            {([["xSTRK Balance", w.balances.xSTRK + " xSTRK", ""], ["PT Balance", w.balances.PT + " PT", C.teal], ["YT Balance", w.balances.YT + " YT", C.amber], ["Positions", String([w.balances.PT, w.balances.YT, w.balances.SY].filter(b => b !== "0" && parseFloat(b) > 0).length), ""]] as [string, string, string][]).map(([l, v, c], i) => (
-              <div key={i} style={{ background: C.bgCard, borderRadius: 12, border: `1px solid ${C.border}`, padding: "16px 20px" }}>
-                <div style={{ fontSize: 9, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, fontWeight: 500 }}>{l}</div>
-                <div style={{ fontSize: 15, fontWeight: 600, fontFamily: mono, color: c || C.text }}>{v}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
+            {([["STRK", w.balances.STRK, C.amber], ["xSTRK", w.balances.xSTRK, C.teal], ["SY", w.balances.SY, C.blue], ["PT", w.balances.PT, C.teal], ["YT", w.balances.YT, C.amber]] as [string, string, string][]).map(([l, v, c], i) => (
+              <div key={i} style={{ background: C.bgCard, borderRadius: 12, border: `1px solid ${C.border}`, padding: "14px 16px" }}>
+                <div style={{ fontSize: 9, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 5, fontWeight: 500 }}>{l}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, fontFamily: mono, color: c }}>{v}</div>
               </div>
             ))}
           </div>
-          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22 }}>
+          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22, marginBottom: 16 }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Active Positions</div>
             {[{ token: "PT-xSTRK", amount: w.balances.PT, apy: "5.8%", color: C.teal }, { token: "YT-xSTRK", amount: w.balances.YT, apy: "14.3%", color: C.amber }, { token: "SY-xSTRK", amount: w.balances.SY, apy: "-", color: C.blue }]
               .filter(p => p.amount !== "0" && parseFloat(p.amount) > 0).map((p, i) => (
@@ -504,38 +537,87 @@ function DashboardPage({ w }: { w: ReturnType<typeof useWallet> }) {
               ))}
             {parseFloat(w.balances.PT || "0") === 0 && parseFloat(w.balances.YT || "0") === 0 && parseFloat(w.balances.SY || "0") === 0 && <div style={{ fontSize: 13, color: C.textDim, textAlign: "center", padding: 24 }}>No positions yet. Start trading to see your positions here.</div>}
           </div>
+
+          {/* Deposit STRK → SY (no split) */}
+          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22, marginBottom: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Deposit STRK → SY <span style={{ fontSize: 11, color: C.textDim, fontWeight: 300 }}>(stakes via Endur, no split)</span></div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input value={depositAmt} onChange={e => setDepositAmt(e.target.value)} placeholder="Amount in STRK" type="number" style={{ flex: 1, background: C.bgInput, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 14, fontFamily: mono, outline: "none" }} />
+              <button onClick={doDeposit} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#000", background: C.teal, fontFamily: font, whiteSpace: "nowrap" }}>Deposit → SY</button>
+            </div>
+          </div>
+
+          {/* Add LP */}
+          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22, marginBottom: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Add Liquidity <span style={{ fontSize: 11, color: C.textDim, fontWeight: 300 }}>(SY + PT → AMM)</span></div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input value={lpSy} onChange={e => setLpSy(e.target.value)} placeholder="SY amount" type="number" style={{ flex: 1, minWidth: 120, background: C.bgInput, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 14, fontFamily: mono, outline: "none" }} />
+              <span style={{ fontSize: 12, color: C.textDim }}>+</span>
+              <input value={lpPt} onChange={e => setLpPt(e.target.value)} placeholder="PT amount" type="number" style={{ flex: 1, minWidth: 120, background: C.bgInput, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 14, fontFamily: mono, outline: "none" }} />
+              <button onClick={doAddLP} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#000", background: C.amber, fontFamily: font, whiteSpace: "nowrap" }}>Add LP</button>
+            </div>
+            <div style={{ fontSize: 10, color: C.textDim, marginTop: 8, fontWeight: 300 }}>Recommended ratio: ~0.982 SY per 1 PT (reflects 7.2% APY, 91d maturity)</div>
+          </div>
+
           {parseFloat(w.balances.YT || "0") > 0 && (
-            <div style={{ marginTop: 16, background: `${C.teal}08`, border: `1px solid ${C.teal}22`, borderRadius: 14, padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+            <div style={{ background: `${C.teal}08`, border: `1px solid ${C.teal}22`, borderRadius: 14, padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
               <div><div style={{ fontSize: 12, color: C.textSec, marginBottom: 4 }}>Claimable from YT-xSTRK</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: mono, color: C.teal }}>{w.balances.YT} YT-xSTRK</div></div>
               <button onClick={() => w.claimYield()} style={{ padding: "10px 24px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#000", background: C.teal, fontFamily: font }}>Claim Yield</button>
             </div>
           )}
         </div>
       )}
+      {txStatus && <TxToast status={txStatus} hash={w.lastTxHash} errorMsg={txError} onClose={() => { setTxStatus(null); setTxError(""); }} />}
     </div>
   );
 }
 
+// ═══════ HASH ROUTING ═══════
+function parseHash(): { page: string; market: number; strategy: string | null } {
+  const h = window.location.hash.slice(1); // remove #
+  if (!h) return { page: "landing", market: 0, strategy: null };
+  const parts = h.split("/");
+  const page = parts[0] || "landing";
+  const market = parts[1] ? parseInt(parts[1]) : 0;
+  const strategy = parts[2] || null;
+  return { page, market, strategy };
+}
+
+function setHash(page: string, market?: number, strategy?: string | null) {
+  if (page === "landing") { window.location.hash = ""; return; }
+  if (page === "trade" && strategy) { window.location.hash = `#${page}/${market ?? 0}/${strategy}`; return; }
+  if (page === "strategy") { window.location.hash = `#${page}/${market ?? 0}`; return; }
+  window.location.hash = `#${page}`;
+}
+
 // ═══════ MAIN APP ═══════
 export default function App() {
-  const [page, setPage] = useState("landing");
-  const [market, setMarket] = useState(0);
-  const [strategy, setStrategy] = useState<string | null>(null);
+  const init = parseHash();
+  const [page, _setPage] = useState(init.page);
+  const [market, setMarket] = useState(init.market);
+  const [strategy, setStrategy] = useState<string | null>(init.strategy);
   const w = useWallet();
+
+  // Listen for back/forward browser navigation
+  useEffect(() => {
+    const onHash = () => { const h = parseHash(); _setPage(h.page); setMarket(h.market); setStrategy(h.strategy); };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font }}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
-      {page === "landing" && <LandingPage onEnter={() => setPage("markets")} />}
+      {page === "landing" && <LandingPage onEnter={() => { _setPage("markets"); setHash("markets"); }} />}
 
       {page !== "landing" && (
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 clamp(12px,3vw,28px)", height: 56, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 40, background: `${C.bg}ee`, backdropFilter: "blur(12px)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => setPage("landing")}><FissionLogo size={20} /><span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.03em" }}>fission</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { _setPage("landing"); setHash("landing"); }}><FissionLogo size={20} /><span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.03em" }}>fission</span></div>
             <nav style={{ display: "flex", gap: 2 }}>
               {(["markets", "dashboard"] as const).map(p => (
-                <button key={p} onClick={() => setPage(p)} style={{ padding: "6px 14px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 500, fontFamily: font,
+                <button key={p} onClick={() => { _setPage(p); setHash(p); }} style={{ padding: "6px 14px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 500, fontFamily: font,
                   background: page === p || (p === "markets" && (page === "strategy" || page === "trade")) ? C.bgHover : "transparent",
                   color: page === p || (p === "markets" && (page === "strategy" || page === "trade")) ? C.text : C.textSec }}>{p.charAt(0).toUpperCase() + p.slice(1)}</button>
               ))}
@@ -550,9 +632,9 @@ export default function App() {
         </header>
       )}
 
-      {page === "markets" && <MarketsPage onSelect={id => { setMarket(id); setPage("strategy"); }} />}
-      {page === "strategy" && <StrategyPage market={market} onSelect={s => { setStrategy(s); setPage("trade"); }} onBack={() => setPage("markets")} />}
-      {page === "trade" && strategy && <TradePage market={market} strategy={strategy} onBack={() => setPage("strategy")} w={w} />}
+      {page === "markets" && <MarketsPage onSelect={id => { setMarket(id); setStrategy(null); _setPage("strategy"); setHash("strategy", id); }} />}
+      {page === "strategy" && <StrategyPage market={market} onSelect={s => { setStrategy(s); _setPage("trade"); setHash("trade", market, s); }} onBack={() => { _setPage("markets"); setHash("markets"); }} />}
+      {page === "trade" && strategy && <TradePage market={market} strategy={strategy} onBack={() => { _setPage("strategy"); setHash("strategy", market); }} w={w} />}
       {page === "dashboard" && <DashboardPage w={w} />}
     </div>
   );
