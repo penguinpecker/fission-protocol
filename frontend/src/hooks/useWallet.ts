@@ -1,15 +1,14 @@
 import { useState, useCallback, useEffect } from "react";
-import { hash, RpcProvider } from "starknet";
+import { hash } from "starknet";
 
 const RPC = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/BQZCAx-0XGUVdVEvVRi7U";
-const alchemyProvider = new RpcProvider({ nodeUrl: RPC });
 
 export const ADDRS = {
-  CORE: "0x00373485f84822c3dcdfbfc273ab262f1ff529c81d5dfbe7115b3bd7489043d8",
-  AMM: "0x0777c8b2e7f0d9ca61a551e3c80f99583829541877af8ce8e2722f94914aa09a",
-  SY: "0x047da6255df8fd148894bb3fcae5a224171233b269a282f58fc87f5832c48dd5",
-  PT: "0x04281f4bc5d18c466ce802698164df38d98b0606ff0e96811af212e1c7861c39",
-  YT: "0x03a3b605a66dbb9753142fe971423e480d61b6503aae8954d81c6344b3250f20",
+  CORE: "0x05cd0b5b58bad5c15b09404797866e1fde74eea86d0b9db6f95f59c9237e45e8",
+  AMM: "0x03063b4bee616d11ef15d124fe2a94193a54db577cf00795b8953b54bd5543c6",
+  SY: "0x03d7988a09d99faf667e10972bcb67a222e69cbc601cff75f1c4584d28356560",
+  PT: "0x031479ec546f1793777615b919fa089d17b937a4228ea816134fa78bfac9d9a2",
+  YT: "0x057025e04427eb4d04281acc9d09c09328eb496df13e12e1159ebddd10dd1bc9",
   XSTRK: "0x028d709c875c0ceac3dce7065bec5328186dc89fe254527084d1689910954b0a",
   STRK: "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
   ETH: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
@@ -102,7 +101,7 @@ export function useWallet() {
     setState({ address: "", shortAddress: "", connected: false, starknet: null, balances: { xSTRK: "0", STRK: "0", ETH: "0", SY: "0", PT: "0", YT: "0" }, loading: false, lastTxHash: "" });
   }, []);
 
-  // Auto-reconnect on page load
+  // Auto-reconnect
   useEffect(() => {
     (async () => {
       try {
@@ -120,48 +119,28 @@ export function useWallet() {
     return () => clearInterval(id);
   }, [state.connected, state.address, fetchBalances]);
 
-  // Real transaction: approve + call contract
-  // Patches wallet's account.provider to use our Alchemy RPC (avoids OnFinality rate limits)
+  // ── TRANSACTION: uses wallet_addInvokeTransaction (SNIP wallet API) ──
+  // This is the ONLY correct way to send txs through Braavos/ArgentX.
+  // Does NOT use account.execute() which requires provider and breaks.
   const sendTx = useCallback(async (calls: { contractAddress: string; entrypoint: string; calldata: string[] }[]): Promise<string> => {
     if (!state.starknet) throw new Error("Not connected");
-    let txHash = "";
 
-    const jsCalls = calls.map(c => ({
-      contractAddress: c.contractAddress,
+    // SNIP wallet API format
+    const snipCalls = calls.map(c => ({
+      contract_address: c.contractAddress,
       entrypoint: c.entrypoint,
       calldata: c.calldata,
     }));
 
-    const account = (state.starknet as any).account;
-    if (account && typeof account.execute === "function") {
-      // Override wallet's default RPC with our Alchemy provider
-      // This fixes "Too Many Requests" from OnFinality public RPC
-      const origProvider = account.provider;
-      try {
-        account.provider = alchemyProvider;
-        // @ts-ignore — channel may exist on some wallet implementations
-        if (account.channel) account.channel = alchemyProvider.channel;
-      } catch { /* some wallets freeze account object */ }
+    console.log("Sending tx with calls:", JSON.stringify(snipCalls, null, 2));
 
-      const result = await account.execute(jsCalls);
-      txHash = result?.transaction_hash || "";
+    const result: any = await state.starknet.request({
+      type: "wallet_addInvokeTransaction",
+      params: { calls: snipCalls },
+    });
 
-      // Restore original provider
-      try { account.provider = origProvider; } catch {}
-    } else {
-      // Fallback: wallet API (wallet handles its own RPC)
-      const result: any = await state.starknet.request({
-        type: "wallet_addInvokeTransaction",
-        params: {
-          calls: calls.map(c => ({
-            contract_address: c.contractAddress,
-            entry_point: c.entrypoint,
-            calldata: c.calldata,
-          })),
-        },
-      });
-      txHash = result?.transaction_hash || (typeof result === "string" ? result : "");
-    }
+    const txHash = result?.transaction_hash || (typeof result === "string" ? result : "");
+    console.log("Tx result:", result, "hash:", txHash);
 
     if (txHash) {
       setState(s => ({ ...s, lastTxHash: txHash }));
@@ -170,7 +149,9 @@ export function useWallet() {
     return txHash;
   }, [state.starknet, state.address, fetchBalances]);
 
-  // Convenience: approve token + deposit to SY
+  // ── Convenience methods ──
+
+  // Deposit xSTRK → SY (approve xSTRK then deposit)
   const depositToSY = useCallback(async (amount: string) => {
     const u = toU256Calldata(amount);
     return sendTx([
@@ -179,7 +160,7 @@ export function useWallet() {
     ]);
   }, [sendTx]);
 
-  // Approve SY + split into PT+YT
+  // Split SY → PT + YT (approve SY then split)
   const split = useCallback(async (amount: string) => {
     const u = toU256Calldata(amount);
     return sendTx([
@@ -188,7 +169,7 @@ export function useWallet() {
     ]);
   }, [sendTx]);
 
-  // Swap SY for PT (buy fixed yield)
+  // Swap SY → PT (approve SY then swap)
   const swapSYForPT = useCallback(async (amount: string) => {
     const u = toU256Calldata(amount);
     return sendTx([

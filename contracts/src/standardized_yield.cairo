@@ -1,4 +1,18 @@
 /// SY wraps yield-bearing tokens (xSTRK, xLBTC) into standardized shares
+#[starknet::interface]
+pub trait IStandardizedYield<T> {
+    fn balance_of(self: @T, account: starknet::ContractAddress) -> u256;
+    fn total_supply(self: @T) -> u256;
+    fn transfer(ref self: T, to: starknet::ContractAddress, amount: u256) -> bool;
+    fn transfer_from(ref self: T, from: starknet::ContractAddress, to: starknet::ContractAddress, amount: u256) -> bool;
+    fn approve(ref self: T, spender: starknet::ContractAddress, amount: u256) -> bool;
+    fn deposit(ref self: T, amount: u256) -> u256;
+    fn redeem(ref self: T, shares: u256) -> u256;
+    fn exchange_rate(self: @T) -> u256;
+    fn get_underlying(self: @T) -> starknet::ContractAddress;
+    fn sync(ref self: T);
+}
+
 #[starknet::contract]
 pub mod StandardizedYield {
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
@@ -6,20 +20,15 @@ pub mod StandardizedYield {
 
     #[storage]
     struct Storage {
-        name: felt252,
-        symbol: felt252,
-        total_supply: u256,
+        name: felt252, symbol: felt252, total_supply: u256,
         balances: Map::<ContractAddress, u256>,
         allowances: Map::<(ContractAddress, ContractAddress), u256>,
-        underlying: ContractAddress,
-        total_underlying: u256,
-        owner: ContractAddress,
+        underlying: ContractAddress, total_underlying: u256, owner: ContractAddress,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event { Deposit: Deposit, Redeem: Redeem, Transfer: Transfer, Approval: Approval }
-
     #[derive(Drop, starknet::Event)]
     struct Deposit { #[key] user: ContractAddress, underlying_in: u256, shares_out: u256 }
     #[derive(Drop, starknet::Event)]
@@ -35,90 +44,65 @@ pub mod StandardizedYield {
         self.underlying.write(underlying); self.owner.write(owner);
     }
 
-    // ── ERC20 standard functions ──
     #[abi(embed_v0)]
-    fn balance_of(self: @ContractState, account: ContractAddress) -> u256 { self.balances.read(account) }
-    #[abi(embed_v0)]
-    fn total_supply(self: @ContractState) -> u256 { self.total_supply.read() }
-    #[abi(embed_v0)]
-    fn transfer(ref self: ContractState, to: ContractAddress, amount: u256) -> bool {
-        let from = get_caller_address();
-        let bal = self.balances.read(from); assert(bal >= amount, 'SY: low bal');
-        self.balances.write(from, bal - amount);
-        self.balances.write(to, self.balances.read(to) + amount);
-        self.emit(Transfer { from, to, value: amount }); true
-    }
-    #[abi(embed_v0)]
-    fn transfer_from(ref self: ContractState, from: ContractAddress, to: ContractAddress, amount: u256) -> bool {
-        let caller = get_caller_address();
-        let a = self.allowances.read((from, caller)); assert(a >= amount, 'SY: low allow');
-        self.allowances.write((from, caller), a - amount);
-        let bal = self.balances.read(from); assert(bal >= amount, 'SY: low bal');
-        self.balances.write(from, bal - amount);
-        self.balances.write(to, self.balances.read(to) + amount);
-        self.emit(Transfer { from, to, value: amount }); true
-    }
-    #[abi(embed_v0)]
-    fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) -> bool {
-        let owner = get_caller_address();
-        self.allowances.write((owner, spender), amount);
-        self.emit(Approval { owner, spender, value: amount }); true
-    }
-
-    // ── SY-specific ──
-    #[abi(embed_v0)]
-    fn deposit(ref self: ContractState, amount: u256) -> u256 {
-        assert(amount > 0, 'SY: zero');
-        let caller = get_caller_address();
-        // Pull underlying from caller
-        let ul = ITokenDispatcher { contract_address: self.underlying.read() };
-        ul.transfer_from(caller, get_contract_address(), amount);
-        // Calculate shares
-        let ts = self.total_supply.read();
-        let tu = self.total_underlying.read();
-        let shares = if ts == 0 { amount } else { (amount * ts) / tu };
-        assert(shares > 0, 'SY: zero shares');
-        // Mint
-        self.total_supply.write(ts + shares);
-        self.total_underlying.write(tu + amount);
-        self.balances.write(caller, self.balances.read(caller) + shares);
-        self.emit(Deposit { user: caller, underlying_in: amount, shares_out: shares });
-        shares
-    }
-
-    #[abi(embed_v0)]
-    fn redeem(ref self: ContractState, shares: u256) -> u256 {
-        assert(shares > 0, 'SY: zero');
-        let caller = get_caller_address();
-        let ts = self.total_supply.read();
-        let tu = self.total_underlying.read();
-        let amount = (shares * tu) / ts;
-        // Burn shares
-        let bal = self.balances.read(caller); assert(bal >= shares, 'SY: low bal');
-        self.balances.write(caller, bal - shares);
-        self.total_supply.write(ts - shares);
-        self.total_underlying.write(tu - amount);
-        // Return underlying
-        let ul = ITokenDispatcher { contract_address: self.underlying.read() };
-        ul.transfer(caller, amount);
-        self.emit(Redeem { user: caller, shares_in: shares, underlying_out: amount });
-        amount
-    }
-
-    #[abi(embed_v0)]
-    fn exchange_rate(self: @ContractState) -> u256 {
-        let ts = self.total_supply.read();
-        if ts == 0 { 1_000_000_000_000_000_000 }
-        else { (self.total_underlying.read() * 1_000_000_000_000_000_000) / ts }
-    }
-
-    #[abi(embed_v0)]
-    fn get_underlying(self: @ContractState) -> ContractAddress { self.underlying.read() }
-
-    #[abi(embed_v0)]
-    fn sync(ref self: ContractState) {
-        let ul = ITokenDispatcher { contract_address: self.underlying.read() };
-        self.total_underlying.write(ul.balance_of(get_contract_address()));
+    impl SYImpl of super::IStandardizedYield<ContractState> {
+        fn balance_of(self: @ContractState, account: ContractAddress) -> u256 { self.balances.read(account) }
+        fn total_supply(self: @ContractState) -> u256 { self.total_supply.read() }
+        fn transfer(ref self: ContractState, to: ContractAddress, amount: u256) -> bool {
+            let from = get_caller_address();
+            let bal = self.balances.read(from); assert(bal >= amount, 'SY: low bal');
+            self.balances.write(from, bal - amount);
+            self.balances.write(to, self.balances.read(to) + amount);
+            self.emit(Transfer { from, to, value: amount }); true
+        }
+        fn transfer_from(ref self: ContractState, from: ContractAddress, to: ContractAddress, amount: u256) -> bool {
+            let caller = get_caller_address();
+            let a = self.allowances.read((from, caller)); assert(a >= amount, 'SY: low allow');
+            self.allowances.write((from, caller), a - amount);
+            let bal = self.balances.read(from); assert(bal >= amount, 'SY: low bal');
+            self.balances.write(from, bal - amount);
+            self.balances.write(to, self.balances.read(to) + amount);
+            self.emit(Transfer { from, to, value: amount }); true
+        }
+        fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) -> bool {
+            let owner = get_caller_address();
+            self.allowances.write((owner, spender), amount);
+            self.emit(Approval { owner, spender, value: amount }); true
+        }
+        fn deposit(ref self: ContractState, amount: u256) -> u256 {
+            assert(amount > 0, 'SY: zero');
+            let caller = get_caller_address();
+            let ul = ITokenDispatcher { contract_address: self.underlying.read() };
+            ul.transfer_from(caller, get_contract_address(), amount);
+            let ts = self.total_supply.read(); let tu = self.total_underlying.read();
+            let shares = if ts == 0 { amount } else { (amount * ts) / tu };
+            assert(shares > 0, 'SY: zero shares');
+            self.total_supply.write(ts + shares); self.total_underlying.write(tu + amount);
+            self.balances.write(caller, self.balances.read(caller) + shares);
+            self.emit(Deposit { user: caller, underlying_in: amount, shares_out: shares }); shares
+        }
+        fn redeem(ref self: ContractState, shares: u256) -> u256 {
+            assert(shares > 0, 'SY: zero');
+            let caller = get_caller_address();
+            let ts = self.total_supply.read(); let tu = self.total_underlying.read();
+            let amount = (shares * tu) / ts;
+            let bal = self.balances.read(caller); assert(bal >= shares, 'SY: low bal');
+            self.balances.write(caller, bal - shares);
+            self.total_supply.write(ts - shares); self.total_underlying.write(tu - amount);
+            let ul = ITokenDispatcher { contract_address: self.underlying.read() };
+            ul.transfer(caller, amount);
+            self.emit(Redeem { user: caller, shares_in: shares, underlying_out: amount }); amount
+        }
+        fn exchange_rate(self: @ContractState) -> u256 {
+            let ts = self.total_supply.read();
+            if ts == 0 { 1_000_000_000_000_000_000 }
+            else { (self.total_underlying.read() * 1_000_000_000_000_000_000) / ts }
+        }
+        fn get_underlying(self: @ContractState) -> ContractAddress { self.underlying.read() }
+        fn sync(ref self: ContractState) {
+            let ul = ITokenDispatcher { contract_address: self.underlying.read() };
+            self.total_underlying.write(ul.balance_of(get_contract_address()));
+        }
     }
 
     #[starknet::interface]
