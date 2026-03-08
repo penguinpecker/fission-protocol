@@ -1,8 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
-import { RpcProvider } from "starknet";
+import { hash } from "starknet";
 
-const RPC_URL = "https://starknet-mainnet.public.blastapi.io";
-const provider = new RpcProvider({ nodeUrl: RPC_URL });
+const RPC = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/BQZCAx-0XGUVdVEvVRi7U";
 
 export const ADDRS = {
   CORE: "0x00373485f84822c3dcdfbfc273ab262f1ff529c81d5dfbe7115b3bd7489043d8",
@@ -15,17 +14,32 @@ export const ADDRS = {
   ETH: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
 };
 
-async function readBalance(tokenAddr: string, userAddr: string): Promise<bigint> {
-  for (const ep of ["balanceOf", "balance_of"]) {
+async function rpcCall(token: string, fnName: string, calldata: string[]): Promise<string[]> {
+  const sel = hash.getSelectorFromName(fnName);
+  const body = {
+    jsonrpc: "2.0", id: 1, method: "starknet_call",
+    params: [{ contract_address: token, entry_point_selector: sel, calldata }, "latest"],
+  };
+  const res = await fetch(RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  console.log("RPC result for", fnName, "on", token.slice(0,10), ":", JSON.stringify(json));
+  if (json.error || !json.result) return [];
+  return json.result;
+}
+
+async function readBalance(token: string, addr: string): Promise<bigint> {
+  for (const fn of ["balance_of", "balanceOf"]) {
     try {
-      const result = await provider.callContract({
-        contractAddress: tokenAddr,
-        entrypoint: ep,
-        calldata: [userAddr],
-      });
-      const low = BigInt(result[0]);
-      const high = BigInt(result[1] || "0");
-      return low + (high << 128n);
+      const result = await rpcCall(token, fn, [addr]);
+      if (result.length > 0) {
+        const low = BigInt(result[0]);
+        const high = result.length > 1 ? BigInt(result[1]) : 0n;
+        return low + (high << 128n);
+      }
     } catch { continue; }
   }
   return 0n;
@@ -65,6 +79,7 @@ export function useWallet() {
         readBalance(ADDRS.XSTRK, addr), readBalance(ADDRS.STRK, addr), readBalance(ADDRS.ETH, addr),
         readBalance(ADDRS.SY, addr), readBalance(ADDRS.PT, addr), readBalance(ADDRS.YT, addr),
       ]);
+      console.log("Raw balances:", { xstrk, strk, eth, sy, pt, yt });
       setState(s => ({ ...s, balances: {
         xSTRK: fmt(xstrk), STRK: fmt(strk), ETH: fmt(eth),
         SY: fmt(sy), PT: fmt(pt), YT: fmt(yt),
@@ -80,6 +95,7 @@ export function useWallet() {
       if (!sn) { setState(s => ({ ...s, loading: false })); return; }
       const accounts: string[] = await sn.request({ type: "wallet_requestAccounts" });
       const addr = accounts[0] || "";
+      console.log("Connected wallet:", addr);
       setState(s => ({
         ...s, address: addr, shortAddress: shortAddr(addr),
         connected: true, starknet: sn, loading: false,
