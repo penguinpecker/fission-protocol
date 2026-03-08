@@ -154,7 +154,7 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
       <div style={{ background: C.gradHero, position: "relative" }}>
         <div style={{ position: "absolute", top: -60, left: "50%", transform: "translateX(-50%)", width: 800, height: 500, background: "radial-gradient(ellipse, rgba(247,147,26,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
         <div style={{ maxWidth: 900, margin: "0 auto", padding: "clamp(60px,10vw,100px) clamp(16px,4vw,40px) 80px", textAlign: "center", position: "relative" }}>
-          <Chip color={C.amber}>RE{"{DEFINE}"} Hackathon · Bitcoin + Privacy Track</Chip>
+          <Chip color={C.amber}>RE{"{DEFINE}"} Hackathon · Bitcoin Track</Chip>
           <h1 style={{ fontSize: "clamp(32px,6vw,58px)", fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1.08, margin: "28px 0 18px" }}>Split your yield.<br /><span style={{ color: C.amber }}>Trade your future.</span></h1>
           <p style={{ fontSize: "clamp(14px,2vw,17px)", color: C.textSec, lineHeight: 1.7, maxWidth: 560, margin: "0 auto 36px", fontWeight: 300 }}>Fission tokenizes yield-bearing BTC and STRK into tradeable Principal Tokens and Yield Tokens. Lock fixed rates, speculate on yields, or earn LP fees.</p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
@@ -162,7 +162,7 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
             <button style={{ padding: "13px 36px", borderRadius: 10, cursor: "pointer", fontSize: 15, fontWeight: 400, color: C.textSec, background: "transparent", border: `1px solid ${C.border}`, fontFamily: font }}>Read Docs</button>
           </div>
           <div style={{ display: "flex", justifyContent: "center", gap: "clamp(24px,4vw,56px)", marginTop: 72, paddingTop: 36, borderTop: `1px solid ${C.border}`, flexWrap: "wrap" }}>
-            {[["$3.34M", "Total Value Locked"], ["2", "Active Markets"], ["Jun 2026", "Next Maturity"], ["Tongo", "Privacy Layer"]].map(([v, l]) => (
+            {[["$3.34M", "Total Value Locked"], ["2", "Active Markets"], ["Jun 2026", "Next Maturity"], ["Starknet", "Network"]].map(([v, l]) => (
               <div key={l} style={{ textAlign: "center" }}><div style={{ fontSize: "clamp(18px,3vw,26px)", fontWeight: 700, fontFamily: mono }}>{v}</div><div style={{ fontSize: 11, color: C.textDim, marginTop: 6, textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 500 }}>{l}</div></div>
             ))}
           </div>
@@ -424,11 +424,7 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
                   Provide PT + SY liquidity to earn swap fees (~4.2% APY).
                 </div>
               )}
-              <button style={{ width: "100%", marginTop: 12, padding: "11px 14px", borderRadius: 10, cursor: "pointer", background: "transparent", border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10, textAlign: "left", fontFamily: font, color: C.text }}>
-                <IconShield size={20} color={C.slate} />
-                <div><div style={{ fontSize: 11, fontWeight: 600, color: C.slate }}>Shield with Tongo</div><div style={{ fontSize: 10, color: C.textDim, fontWeight: 300 }}>Hide position · Confidential ERC20</div></div>
-              </button>
-            </div>
+              </div>
           </div>
         </div>
       </div>

@@ -122,17 +122,35 @@ export function useWallet() {
   // Real transaction: approve + call contract
   const sendTx = useCallback(async (calls: { contractAddress: string; entrypoint: string; calldata: string[] }[]): Promise<string> => {
     if (!state.starknet) throw new Error("Not connected");
-    const snCalls = calls.map(c => ({
-      contract_address: c.contractAddress,
-      entry_point: c.entrypoint,
-      calldata: c.calldata,
-    }));
-    const result = await state.starknet.request({ type: "starknet_executionRequest", params: { calls: snCalls } });
-    const txHash = result.transaction_hash || result;
-    setState(s => ({ ...s, lastTxHash: typeof txHash === "string" ? txHash : "" }));
-    // Refresh balances after a delay
+    let txHash = "";
+
+    // Method 1: account.execute() — standard starknet.js (Braavos & ArgentX)
+    const account = (state.starknet as any).account;
+    if (account && typeof account.execute === "function") {
+      const result = await account.execute(calls.map(c => ({
+        contractAddress: c.contractAddress,
+        entrypoint: c.entrypoint,
+        calldata: c.calldata,
+      })));
+      txHash = result?.transaction_hash || "";
+    } else {
+      // Method 2: wallet API request
+      const result: any = await state.starknet.request({
+        type: "wallet_addInvokeTransaction",
+        params: {
+          calls: calls.map(c => ({
+            contract_address: c.contractAddress,
+            entry_point: c.entrypoint,
+            calldata: c.calldata,
+          })),
+        },
+      });
+      txHash = result?.transaction_hash || (typeof result === "string" ? result : "");
+    }
+
+    setState(s => ({ ...s, lastTxHash: txHash }));
     setTimeout(() => fetchBalances(state.address), 8000);
-    return typeof txHash === "string" ? txHash : "";
+    return txHash;
   }, [state.starknet, state.address, fetchBalances]);
 
   // Convenience: approve token + deposit to SY
