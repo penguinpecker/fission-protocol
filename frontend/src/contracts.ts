@@ -1,0 +1,18 @@
+// Fission Protocol — Starknet Mainnet Deployed Addresses
+
+export const CONTRACTS = {
+  FISSION_CORE: "0x00373485f84822c3dcdfbfc273ab262f1ff529c81d5dfbe7115b3bd7489043d8",
+  FISSION_AMM: "0x0777c8b2e7f0d9ca61a551e3c80f99583829541877af8ce8e2722f94914aa09a",
+  SY_XSTRK: "0x047da6255df8fd148894bb3fcae5a224171233b269a282f58fc87f5832c48dd5",
+  PT_XSTRK: "0x04281f4bc5d18c466ce802698164df38d98b0606ff0e96811af212e1c7861c39",
+  YT_XSTRK: "0x03a3b605a66dbb9753142fe971423e480d61b6503aae8954d81c6344b3250f20",
+} as const;
+
+export const EXTERNAL_TOKENS = {
+  XSTRK: "0x028d709c875c0ceac3dce7065bec5328186dc89fe254527084d1689910954b0a",
+  STRK: "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+  ETH: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+} as const;
+
+export const EXPLORER = "https://voyager.online";
+export const NETWORK = "mainnet";

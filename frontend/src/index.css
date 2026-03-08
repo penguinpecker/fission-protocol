@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 234 60% 7%;
+    --foreground: 240 20% 92%;
+    --card: 236 55% 11%;
+    --card-foreground: 240 20% 92%;
+    --popover: 236 55% 11%;
+    --popover-foreground: 240 20% 92%;
+    --primary: 224 100% 68%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 236 40% 16%;
+    --secondary-foreground: 240 20% 92%;
+    --muted: 236 30% 18%;
+    --muted-foreground: 240 15% 58%;
+    --accent: 236 40% 16%;
+    --accent-foreground: 240 20% 92%;
+    --destructive: 0 72% 63%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 224 100% 68% / 0.08;
+    --input: 236 55% 10%;
+    --ring: 224 100% 68%;
+    --radius: 0.5rem;
+  }
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+  }
+}
+.font-mono { font-family: 'IBM Plex Mono', monospace; }
+.text-btc { color: #F7931A; }
+.bg-btc\/8 { background-color: rgba(247,147,26,0.08); }
+.text-yield { color: #34D399; }
+.bg-yield\/8 { background-color: rgba(52,211,153,0.08); }
+.text-coral { color: #E97880; }
+.bg-sn-grad { background: linear-gradient(135deg, #171870 0%, #3928A0 50%, #A15882 100%); }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: hsl(224 100% 68% / 0.15); border-radius: 4px; }
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+input[type=number] { -moz-appearance: textfield; }

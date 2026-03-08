@@ -1,0 +1,4 @@
+[sncast.default]
+url = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/BQZCAx-0XGUVdVEvVRi7U"
+account = "deployer"
+accounts-file = "accounts.json"
