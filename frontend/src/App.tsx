@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Settings, ChevronDown, ArrowDown, Search, Check, ExternalLink, Shield, Info, X, Wallet, BarChart3, TrendingUp, LayoutDashboard, RefreshCw, AlertTriangle, Loader2, CheckCircle2 } from "lucide-react";
-import { MARKETS, YIELD_DATA, PT_DATA, TOKENS, POSITIONS, daysTo, fmt, type Market } from "./data";
+import { MARKETS, YIELD_DATA, PT_DATA, TOKEN_LIST, daysTo, fmt, type Market } from "./data";
 
 /* ══════════════════════════════════════════════════════════════════════════
    FISSION PROTOCOL — Complete DeFi Frontend
@@ -92,7 +92,7 @@ function SlippageSettings() {
 // ── TOKEN SELECTOR MODAL ──────────────────────────────────────────────────
 function TokenSelector({ open, onClose, onSelect, current }: { open: boolean; onClose: () => void; onSelect: (s: string) => void; current: string }) {
   const [search, setSearch] = useState("");
-  const filtered = TOKENS.filter(t => t.sym.toLowerCase().includes(search.toLowerCase()) || t.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = TOKEN_LIST.filter(t => t.sym.toLowerCase().includes(search.toLowerCase()) || t.name.toLowerCase().includes(search.toLowerCase()));
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="bg-[#0C0C2E] border-primary/10 max-w-sm">
@@ -115,7 +115,6 @@ function TokenSelector({ open, onClose, onSelect, current }: { open: boolean; on
                 <div><div className="text-sm font-medium text-left">{t.sym}</div><div className="text-[10px] text-muted-foreground">{t.name}</div></div>
               </div>
               <div className="text-right">
-                <div className="text-xs font-mono">{t.bal}</div>
                 {t.sym === current && <Check size={12} className="text-primary ml-auto" />}
               </div>
             </button>
@@ -447,8 +446,8 @@ export default function App() {
                   <div className="bg-[#080826] rounded-md p-3 border border-primary/[0.05] mb-1.5">
                     <div className="flex justify-between mb-1.5">
                       <span className="text-[9px] text-muted-foreground uppercase tracking-wider">You pay</span>
-                      <span className="text-[10px] text-muted-foreground cursor-pointer" onClick={() => setAmt("1250")}>
-                        Bal: <span className="text-foreground/70 font-mono">1,250.00</span> <span className="text-primary font-semibold ml-0.5">MAX</span>
+                      <span className="text-[10px] text-muted-foreground cursor-pointer" onClick={() => setAmt(w.connected ? w.balances.xSTRK : "0")}>
+                        Bal: <span className="text-foreground/70 font-mono">{w.connected ? w.balances.xSTRK : "0"}</span> <span className="text-primary font-semibold ml-0.5">MAX</span>
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -529,7 +528,7 @@ export default function App() {
             {wallet && (
               <div className="bg-card rounded-lg border border-primary/[0.06] mt-3 p-4">
                 <div className="text-xs font-semibold text-muted-foreground mb-2.5">Your Positions</div>
-                {POSITIONS.map((p, i) => (
+                {[{token:"PT-xSTRK",amount:w.balances.PT,value:"-",apy:"5.8%",color:"#34D399",market:0},{token:"YT-xSTRK",amount:w.balances.YT,value:"-",apy:"14.3%",color:"#F7931A",market:0},{token:"SY-xSTRK",amount:w.balances.SY,value:"-",apy:"-",color:"#5C94FF",market:0}].filter(p=>p.amount!=="0.0000").map((p, i) => (
                   <div key={i} className="flex justify-between py-2 border-b border-primary/[0.04] last:border-0">
                     <div><div className="text-xs font-medium">{p.token}</div><div className="text-[10px] text-muted-foreground font-mono">{p.amount}</div></div>
                     <div className="text-right"><div className="text-xs font-mono">{p.value}</div><div className="text-[10px] font-mono font-medium" style={{ color: p.color }}>{p.apy}</div></div>
@@ -537,7 +536,7 @@ export default function App() {
                 ))}
                 <div className="flex justify-between mt-2.5 p-2 bg-secondary/30 rounded">
                   <span className="text-[10px] text-muted-foreground">Unclaimed Yield</span>
-                  <span className="text-xs text-yield font-mono font-semibold">12.45 SY-xSTRK</span>
+                  <span className="text-xs text-yield font-mono font-semibold">{w.balances.YT} YT-xSTRK</span>
                 </div>
                 <Button variant="outline" size="sm" className="w-full mt-2 text-yield border-yield/20 hover:bg-yield/5 text-xs">Claim All Yield</Button>
               </div>
@@ -562,13 +561,13 @@ export default function App() {
                 <h2 className="text-lg font-semibold">Dashboard</h2>
                 <div className="text-right">
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Portfolio Value</div>
-                  <div className="text-2xl font-mono font-bold">$22,269.10</div>
+                  <div className="text-2xl font-mono font-bold">-</div>
                 </div>
               </div>
 
               {/* Stats row */}
               <div className="grid grid-cols-4 gap-3">
-                {[["Total Deposited", "$22,000", ""], ["Unrealized PnL", "+$269.10", "#34D399"], ["Unclaimed Yield", "12.45 SY", "#34D399"], ["Active Positions", "4", ""]].map(([l, v, c], i) => (
+                {[["Total Deposited", w.balances.xSTRK + " xSTRK", ""], ["Unrealized PnL", w.balances.SY + " SY", "#34D399"], ["Unclaimed Yield", w.balances.YT + " YT", "#34D399"], ["Positions", "3", ""]].map(([l, v, c], i) => (
                   <div key={i} className="bg-card rounded-lg border border-primary/[0.06] p-3">
                     <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">{l}</div>
                     <div className="text-sm font-mono font-semibold" style={{ color: (c as string) || undefined }}>{v}</div>
@@ -585,7 +584,7 @@ export default function App() {
                 <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-2 text-[9px] text-muted-foreground uppercase tracking-wider border-b border-primary/[0.04]">
                   <span>Position</span><span>Amount</span><span>Value</span><span>APY</span><span>Market</span>
                 </div>
-                {POSITIONS.map((p, i) => (
+                {[{token:"PT-xSTRK",amount:w.balances.PT,value:"-",apy:"5.8%",color:"#34D399",market:0},{token:"YT-xSTRK",amount:w.balances.YT,value:"-",apy:"14.3%",color:"#F7931A",market:0},{token:"SY-xSTRK",amount:w.balances.SY,value:"-",apy:"-",color:"#5C94FF",market:0}].filter(p=>p.amount!=="0.0000").map((p, i) => (
                   <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 px-4 py-3 border-b border-primary/[0.04] last:border-0 hover:bg-primary/[0.02] transition-colors">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold" style={{ background: `${p.color}12`, color: p.color }}>{p.token.slice(0,2)}</div>
@@ -605,7 +604,7 @@ export default function App() {
                 <div className="flex items-center justify-between p-3 bg-yield/8 border border-yield/15 rounded-lg">
                   <div>
                     <div className="text-xs text-muted-foreground">Claimable from YT-xSTRK</div>
-                    <div className="text-lg font-mono font-bold text-yield">12.45 SY-xSTRK</div>
+                    <div className="text-lg font-mono font-bold text-yield">{w.balances.YT} YT-xSTRK</div>
                     <div className="text-[10px] text-muted-foreground">≈ $12.08</div>
                   </div>
                   <Button className="bg-yield hover:bg-yield/90 text-black font-semibold">Claim Yield</Button>
@@ -630,7 +629,7 @@ export default function App() {
       <TokenSelector open={tokenModal} onClose={() => setTokenModal(false)} onSelect={setPayToken} current={payToken} />
       <TxReview open={txReview} onClose={() => setTxReview(false)} onConfirm={doTx}
         data={{ payAmt: amt || "0", payToken, rcvAmt: out, rcvToken, apy, apyColor, priceImpact: `${priceImpact < 0.1 ? "<0.01" : priceImpact.toFixed(2)}%`, fee: "0.30%", route: `${payToken} → SY → ${rcvToken}`, minReceived: `${(parseFloat(out || "0") * (1 - slippage/100)).toFixed(4)} ${rcvToken}` }} />
-      {txStatus && <TxToast status={txStatus} hash="0x04a8f3c2e91d7b6a5f8e2c1d3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c1b2" onClose={() => setTxStatus(null)} />}
+      {txStatus && <TxToast status={txStatus} hash="pending" onClose={() => setTxStatus(null)} />}
     </div>
   );
 }
