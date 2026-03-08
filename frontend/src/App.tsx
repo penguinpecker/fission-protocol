@@ -233,9 +233,10 @@ function MarketsPage({ onSelect }: { onSelect: (id: number) => void }) {
       <p style={{ fontSize: 13, color: C.textSec, fontWeight: 300, marginBottom: 32 }}>Select a yield-bearing market to trade</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16 }}>
         {MARKETS.map(m => (
-          <button key={m.id} onClick={() => onSelect(m.id)} style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 24, cursor: "pointer", textAlign: "left", transition: "all 0.25s", fontFamily: font, color: C.text, width: "100%" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${m.accent}33`; (e.currentTarget as HTMLElement).style.transform = "translateY(-3px)"; }}
+          <button key={m.id} onClick={() => onSelect(m.id)} style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 24, cursor: m.id === 1 ? "default" : "pointer", textAlign: "left", transition: "all 0.25s", fontFamily: font, color: C.text, width: "100%", position: "relative", opacity: m.id === 1 ? 0.6 : 1 }}
+            onMouseEnter={e => { if (m.id === 0) { (e.currentTarget as HTMLElement).style.borderColor = `${m.accent}33`; (e.currentTarget as HTMLElement).style.transform = "translateY(-3px)"; } }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.border; (e.currentTarget as HTMLElement).style.transform = "translateY(0)"; }}>
+            {m.id === 1 && <div style={{ position: "absolute", top: 12, right: 12, fontSize: 10, fontWeight: 600, color: C.amber, padding: "3px 10px", borderRadius: 20, border: `1px solid ${C.amber}33`, background: `${C.amber}10` }}>Coming Soon</div>}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ width: 40, height: 40, borderRadius: 12, background: `${m.accent}10`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15, color: m.accent }}>{m.sym[0]}</div>
@@ -319,48 +320,33 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
   const [txStatus, setTxStatus] = useState<"pending" | "success" | "error" | null>(null);
   const [txError, setTxError] = useState("");
   const apyVal = strategy === "pt" ? m.fixedApy : strategy === "yt" ? m.longApy : m.underlyingApy;
-  const rcv = strategy === "pt" ? `PT-${m.sym}` : strategy === "yt" ? `YT-${m.sym}` : `PT + YT`;
-  const out = useMemo(() => { const a = parseFloat(amt); if (!a) return "0.0000"; return strategy === "pt" ? (a / m.ptPrice).toFixed(4) : strategy === "yt" ? (a / m.ytPrice).toFixed(4) : a.toFixed(4); }, [amt, strategy, m]);
+  const rcv = `PT + YT`;
+  const out = useMemo(() => { const a = parseFloat(amt); if (!a) return "0.0000"; return a.toFixed(4); }, [amt]);
   const chartData: any[] = strategy === "pt" ? PT_DATA[market] : YIELD_DATA[market];
 
   const doTx = async () => {
     if (!amt || parseFloat(amt) <= 0) return;
+    if (market === 1) { setTxError("xLBTC market coming soon"); setTxStatus("error"); return; }
     setTxStatus("pending");
     setTxError("");
     try {
-      let txHash = "";
-      if (strategy === "pt") txHash = await w.swapSYForPT(amt);
-      else if (strategy === "yt") txHash = await w.swapSYForPT(amt);
-      else txHash = await w.split(amt);
+      // All strategies: xSTRK → approve → SY deposit → approve SY → split PT+YT
+      // Single atomic multicall (4 contract calls in 1 tx)
+      const txHash = await w.depositAndSplit(amt);
       if (txHash) { setTxStatus("success"); setAmt(""); }
       else setTxStatus("error");
     } catch (e: any) {
       console.error("Transaction error:", e);
       const msg = e?.message || String(e);
-      if (msg.includes("ENTRYPOINT_NOT_FOUND")) {
-        setTxError("Contract entrypoint not found. The SY contract needs to be redeployed with ERC20 approve support.");
+      if (msg.includes("Execute failed")) {
+        setTxError("Transaction failed. Check your xSTRK balance and try a smaller amount.");
       } else if (msg.includes("rejected") || msg.includes("abort") || msg.includes("cancel")) {
         setTxError("Transaction was rejected in wallet.");
-      } else if (msg.includes("insufficient") || msg.includes("balance")) {
-        setTxError("Insufficient balance for this transaction.");
+      } else if (msg.includes("low bal") || msg.includes("insufficient")) {
+        setTxError("Insufficient xSTRK balance.");
       } else {
-        setTxError(msg.length > 120 ? msg.slice(0, 120) + "..." : msg);
+        setTxError(msg.length > 150 ? msg.slice(0, 150) + "..." : msg);
       }
-      setTxStatus("error");
-    }
-  };
-
-  const doDeposit = async () => {
-    if (!amt || parseFloat(amt) <= 0) return;
-    setTxStatus("pending");
-    setTxError("");
-    try {
-      const txHash = await w.depositToSY(amt);
-      if (txHash) { setTxStatus("success"); setAmt(""); }
-      else setTxStatus("error");
-    } catch (e: any) {
-      console.error("Deposit error:", e);
-      setTxError(e?.message?.slice(0, 120) || "Deposit failed");
       setTxStatus("error");
     }
   };
@@ -444,22 +430,24 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
                 </div>
               </div>
               <div style={{ fontSize: 12, marginBottom: 18 }}>
-                {([["APY", `${apyVal}%`, s.color], ["Price Impact", "<0.01%", C.teal], ["Route", `xSTRK → SY → ${rcv}`, C.textSec], ["Fee", "0.30%", C.textSec]] as [string, string, string][]).map(([l, v, c], i) => (
+                {([["APY", `${apyVal}%`, s.color], ["Price Impact", "<0.01%", C.teal], ["Route", "xSTRK → SY → Split → PT + YT", C.textSec], ["Fee", "0.30%", C.textSec]] as [string, string, string][]).map(([l, v, c], i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: i < 3 ? `1px solid ${C.border}` : "none" }}>
                     <span style={{ color: C.textDim, fontWeight: 300 }}>{l}</span><span style={{ fontFamily: mono, fontWeight: 500, color: c, fontSize: 11 }}>{v}</span>
                   </div>
                 ))}
               </div>
-              <button onClick={() => w.connected ? doTx() : w.connect()} style={{ width: "100%", padding: "13px 0", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: font, color: !w.connected ? "#000" : (s.id === "yt" ? "#000" : "#fff"), background: !w.connected ? C.gradBtn : s.color }}>
-                {!w.connected ? "Connect Wallet" : strategy === "pt" ? "Lock Fixed Yield" : strategy === "yt" ? "Long Yield" : "Split → PT + YT"}
+              <button onClick={() => w.connected ? doTx() : w.connect()} style={{ width: "100%", padding: "13px 0", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: font, color: !w.connected ? "#000" : (s.id === "yt" ? "#000" : "#fff"), background: !w.connected ? C.gradBtn : (market === 1 ? C.textDim : s.color), opacity: market === 1 ? 0.5 : 1 }}>
+                {!w.connected ? "Connect Wallet" : market === 1 ? "xLBTC Coming Soon" : strategy === "pt" ? "Lock Fixed Yield" : strategy === "yt" ? "Long Yield" : "Split → PT + YT"}
               </button>
-              {w.connected && (
-                <button onClick={doDeposit} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 13, fontWeight: 500, fontFamily: font, color: C.textSec, background: "transparent" }}>
-                  Step 1: Deposit xSTRK → SY
-                </button>
+              {w.connected && market === 0 && (
+                <div style={{ marginTop: 10, padding: "9px 12px", background: `${C.teal}06`, borderRadius: 8, border: `1px solid ${C.teal}12`, fontSize: 10, color: C.textSec, lineHeight: 1.5, fontWeight: 300 }}>
+                  {strategy === "pt" ? "Deposits xSTRK → wraps to SY → splits into PT + YT. You receive PT (fixed yield) + YT (variable yield)."
+                    : strategy === "yt" ? "Deposits xSTRK → wraps to SY → splits into PT + YT. You receive YT (leveraged yield exposure) + PT (sell for instant profit)."
+                    : "Deposits xSTRK → wraps to SY → splits into PT + YT. You receive both tokens to provide LP or trade."}
+                </div>
               )}
               {strategy === "split" && (
-                <div style={{ marginTop: 12, padding: "11px 14px", background: `${C.amber}06`, borderRadius: 10, border: `1px solid ${C.amber}15`, fontSize: 11, color: C.textSec, lineHeight: 1.55, fontWeight: 300 }}>
+                <div style={{ marginTop: 10, padding: "11px 14px", background: `${C.amber}06`, borderRadius: 10, border: `1px solid ${C.amber}15`, fontSize: 11, color: C.textSec, lineHeight: 1.55, fontWeight: 300 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><IconLP size={16} /><strong style={{ color: C.amber, fontWeight: 600 }}>Add LP after split</strong></div>
                   Provide PT + SY liquidity to earn swap fees (~4.2% APY).
                 </div>

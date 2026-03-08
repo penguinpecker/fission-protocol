@@ -160,7 +160,18 @@ export function useWallet() {
     ]);
   }, [sendTx]);
 
-  // Split SY → PT + YT (approve SY then split)
+  // Full flow: xSTRK → deposit SY → split PT+YT (atomic 4-call multicall)
+  const depositAndSplit = useCallback(async (amount: string) => {
+    const u = toU256Calldata(amount);
+    return sendTx([
+      { contractAddress: ADDRS.XSTRK, entrypoint: "approve", calldata: [ADDRS.SY, ...u] },
+      { contractAddress: ADDRS.SY, entrypoint: "deposit", calldata: u },
+      { contractAddress: ADDRS.SY, entrypoint: "approve", calldata: [ADDRS.CORE, ...u] },
+      { contractAddress: ADDRS.CORE, entrypoint: "split", calldata: ["0x0", ...u] },
+    ]);
+  }, [sendTx]);
+
+  // Split SY → PT + YT (requires SY balance)
   const split = useCallback(async (amount: string) => {
     const u = toU256Calldata(amount);
     return sendTx([
@@ -169,7 +180,7 @@ export function useWallet() {
     ]);
   }, [sendTx]);
 
-  // Swap SY → PT (approve SY then swap)
+  // Swap SY → PT via AMM (requires SY balance + AMM liquidity)
   const swapSYForPT = useCallback(async (amount: string) => {
     const u = toU256Calldata(amount);
     return sendTx([
@@ -187,6 +198,6 @@ export function useWallet() {
 
   return {
     ...state, connect: doConnect, disconnect: doDisconnect, fetchBalances,
-    sendTx, depositToSY, split, swapSYForPT, claimYield,
+    sendTx, depositToSY, depositAndSplit, split, swapSYForPT, claimYield,
   };
 }
