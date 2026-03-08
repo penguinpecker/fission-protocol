@@ -130,12 +130,16 @@ function ChartTip({ active, payload }: any) {
   return <div style={{ background: C.bgCard, border: `1px solid ${C.borderHover}`, borderRadius: 6, padding: "6px 10px", fontFamily: mono, fontSize: 11 }}>{payload.map((p: any, i: number) => <div key={i} style={{ color: p.color || C.text }}>{typeof p.value === "number" ? p.value.toFixed(2) : p.value}</div>)}</div>;
 }
 
-function TxToast({ status, hash, onClose }: { status: "pending" | "success" | "error"; hash: string; onClose: () => void }) {
-  const cfg = { pending: { color: C.amber, title: "Transaction Pending", desc: "Confirming on Starknet..." }, success: { color: C.teal, title: "Transaction Confirmed", desc: hash ? `${hash.slice(0, 10)}...${hash.slice(-6)}` : "Success" }, error: { color: C.red, title: "Transaction Failed", desc: "Please try again" } }[status];
+function TxToast({ status, hash, errorMsg, onClose }: { status: "pending" | "success" | "error"; hash: string; errorMsg?: string; onClose: () => void }) {
+  const cfg = {
+    pending: { color: C.amber, title: "Transaction Pending", desc: "Waiting for wallet signature..." },
+    success: { color: C.teal, title: "Transaction Confirmed", desc: hash ? `${hash.slice(0, 10)}...${hash.slice(-6)}` : "Success" },
+    error: { color: C.red, title: "Transaction Failed", desc: errorMsg || "Transaction was rejected" },
+  }[status];
   return (
-    <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 100, background: C.bgCard, border: `1px solid ${cfg.color}33`, borderRadius: 12, padding: 16, minWidth: 280, boxShadow: `0 8px 32px rgba(0,0,0,0.5)` }}>
+    <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 100, background: C.bgCard, border: `1px solid ${cfg.color}33`, borderRadius: 12, padding: 16, minWidth: 280, maxWidth: 400, boxShadow: `0 8px 32px rgba(0,0,0,0.5)` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div><div style={{ fontSize: 14, fontWeight: 600, color: cfg.color, marginBottom: 4 }}>{cfg.title}</div><div style={{ fontSize: 11, color: C.textSec, fontFamily: mono }}>{cfg.desc}</div></div>
+        <div style={{ flex: 1, marginRight: 8 }}><div style={{ fontSize: 14, fontWeight: 600, color: cfg.color, marginBottom: 4 }}>{cfg.title}</div><div style={{ fontSize: 11, color: C.textSec, fontFamily: mono, wordBreak: "break-word" }}>{cfg.desc}</div></div>
         <button onClick={onClose} style={{ background: "none", border: "none", color: C.textDim, cursor: "pointer", fontSize: 16, padding: 4 }}>×</button>
       </div>
       {hash && status === "success" && <a href={`https://voyager.online/tx/${hash}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.amber, marginTop: 8, display: "inline-block" }}>View on Voyager →</a>}
@@ -313,21 +317,52 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
   const s = STRATEGIES.find(x => x.id === strategy)!;
   const [amt, setAmt] = useState("");
   const [txStatus, setTxStatus] = useState<"pending" | "success" | "error" | null>(null);
+  const [txError, setTxError] = useState("");
   const apyVal = strategy === "pt" ? m.fixedApy : strategy === "yt" ? m.longApy : m.underlyingApy;
   const rcv = strategy === "pt" ? `PT-${m.sym}` : strategy === "yt" ? `YT-${m.sym}` : `PT + YT`;
   const out = useMemo(() => { const a = parseFloat(amt); if (!a) return "0.0000"; return strategy === "pt" ? (a / m.ptPrice).toFixed(4) : strategy === "yt" ? (a / m.ytPrice).toFixed(4) : a.toFixed(4); }, [amt, strategy, m]);
   const chartData: any[] = strategy === "pt" ? PT_DATA[market] : YIELD_DATA[market];
 
   const doTx = async () => {
+    if (!amt || parseFloat(amt) <= 0) return;
     setTxStatus("pending");
+    setTxError("");
     try {
       let txHash = "";
-      if (strategy === "pt") txHash = await w.swapSYForPT(amt || "0");
-      else if (strategy === "yt") txHash = await w.swapSYForPT(amt || "0");
-      else txHash = await w.split(amt || "0");
-      if (txHash) setTxStatus("success"); else setTxStatus("error");
-      setAmt("");
-    } catch (e) { console.error(e); setTxStatus("error"); }
+      if (strategy === "pt") txHash = await w.swapSYForPT(amt);
+      else if (strategy === "yt") txHash = await w.swapSYForPT(amt);
+      else txHash = await w.split(amt);
+      if (txHash) { setTxStatus("success"); setAmt(""); }
+      else setTxStatus("error");
+    } catch (e: any) {
+      console.error("Transaction error:", e);
+      const msg = e?.message || String(e);
+      if (msg.includes("ENTRYPOINT_NOT_FOUND")) {
+        setTxError("Contract entrypoint not found. The SY contract needs to be redeployed with ERC20 approve support.");
+      } else if (msg.includes("rejected") || msg.includes("abort") || msg.includes("cancel")) {
+        setTxError("Transaction was rejected in wallet.");
+      } else if (msg.includes("insufficient") || msg.includes("balance")) {
+        setTxError("Insufficient balance for this transaction.");
+      } else {
+        setTxError(msg.length > 120 ? msg.slice(0, 120) + "..." : msg);
+      }
+      setTxStatus("error");
+    }
+  };
+
+  const doDeposit = async () => {
+    if (!amt || parseFloat(amt) <= 0) return;
+    setTxStatus("pending");
+    setTxError("");
+    try {
+      const txHash = await w.depositToSY(amt);
+      if (txHash) { setTxStatus("success"); setAmt(""); }
+      else setTxStatus("error");
+    } catch (e: any) {
+      console.error("Deposit error:", e);
+      setTxError(e?.message?.slice(0, 120) || "Deposit failed");
+      setTxStatus("error");
+    }
   };
 
   return (
@@ -418,6 +453,11 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
               <button onClick={() => w.connected ? doTx() : w.connect()} style={{ width: "100%", padding: "13px 0", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: font, color: !w.connected ? "#000" : (s.id === "yt" ? "#000" : "#fff"), background: !w.connected ? C.gradBtn : s.color }}>
                 {!w.connected ? "Connect Wallet" : strategy === "pt" ? "Lock Fixed Yield" : strategy === "yt" ? "Long Yield" : "Split → PT + YT"}
               </button>
+              {w.connected && (
+                <button onClick={doDeposit} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 13, fontWeight: 500, fontFamily: font, color: C.textSec, background: "transparent" }}>
+                  Step 1: Deposit xSTRK → SY
+                </button>
+              )}
               {strategy === "split" && (
                 <div style={{ marginTop: 12, padding: "11px 14px", background: `${C.amber}06`, borderRadius: 10, border: `1px solid ${C.amber}15`, fontSize: 11, color: C.textSec, lineHeight: 1.55, fontWeight: 300 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><IconLP size={16} /><strong style={{ color: C.amber, fontWeight: 600 }}>Add LP after split</strong></div>
@@ -428,7 +468,7 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
           </div>
         </div>
       </div>
-      {txStatus && <TxToast status={txStatus} hash={w.lastTxHash} onClose={() => setTxStatus(null)} />}
+      {txStatus && <TxToast status={txStatus} hash={w.lastTxHash} errorMsg={txError} onClose={() => { setTxStatus(null); setTxError(""); }} />}
     </div>
   );
 }

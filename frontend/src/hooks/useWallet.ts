@@ -131,59 +131,29 @@ export function useWallet() {
       calldata: c.calldata,
     }));
 
-    // Format for wallet API (SNIP-6 style)
-    const apiCalls = calls.map(c => ({
-      contract_address: c.contractAddress,
-      entry_point: c.entrypoint,
-      calldata: c.calldata,
-    }));
-
-    // Try Method 1: account.execute() — Braavos & ArgentX standard
-    try {
-      const account = (state.starknet as any).account;
-      if (account && typeof account.execute === "function") {
-        const result = await account.execute(jsCalls);
-        txHash = result?.transaction_hash || "";
-        if (txHash) {
-          setState(s => ({ ...s, lastTxHash: txHash }));
-          setTimeout(() => fetchBalances(state.address), 8000);
-          return txHash;
-        }
-      }
-    } catch (e: any) {
-      console.warn("account.execute failed, trying wallet API:", e?.message);
-    }
-
-    // Try Method 2: wallet_addInvokeTransaction
-    try {
+    // Try account.execute() — Braavos & ArgentX standard
+    const account = (state.starknet as any).account;
+    if (account && typeof account.execute === "function") {
+      const result = await account.execute(jsCalls);
+      txHash = result?.transaction_hash || "";
+    } else {
+      // Fallback: wallet API
+      const apiCalls = calls.map(c => ({
+        contract_address: c.contractAddress,
+        entry_point: c.entrypoint,
+        calldata: c.calldata,
+      }));
       const result: any = await state.starknet.request({
         type: "wallet_addInvokeTransaction",
         params: { calls: apiCalls },
       });
       txHash = result?.transaction_hash || (typeof result === "string" ? result : "");
-      if (txHash) {
-        setState(s => ({ ...s, lastTxHash: txHash }));
-        setTimeout(() => fetchBalances(state.address), 8000);
-        return txHash;
-      }
-    } catch (e: any) {
-      console.warn("wallet_addInvokeTransaction failed, trying starknet_addInvokeTransaction:", e?.message);
     }
 
-    // Try Method 3: starknet_addInvokeTransaction (alternative name)
-    try {
-      const result: any = await state.starknet.request({
-        type: "starknet_addInvokeTransaction",
-        params: { calls: apiCalls },
-      });
-      txHash = result?.transaction_hash || (typeof result === "string" ? result : "");
-    } catch (e: any) {
-      console.error("All transaction methods failed:", e?.message);
-      throw new Error("Transaction rejected or wallet does not support invoke");
+    if (txHash) {
+      setState(s => ({ ...s, lastTxHash: txHash }));
+      setTimeout(() => fetchBalances(state.address), 8000);
     }
-
-    setState(s => ({ ...s, lastTxHash: txHash }));
-    setTimeout(() => fetchBalances(state.address), 8000);
     return txHash;
   }, [state.starknet, state.address, fetchBalances]);
 
