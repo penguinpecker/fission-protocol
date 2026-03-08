@@ -1,3 +1,4 @@
+import { useWallet } from "./hooks/useWallet";
 
 import { useState, useMemo } from "react";
 import { Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Line, ComposedChart } from "recharts";
@@ -155,7 +156,7 @@ function TxReview({ open, onClose, onConfirm, data }: { open: boolean; onClose: 
               </div>
             ))}
           </div>
-          <Button onClick={onConfirm} className="w-full bg-sn-grad hover:opacity-90 text-white font-semibold">Confirm Transaction</Button>
+          <Button onClick={onConfirm} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-90 text-white font-semibold">Confirm Transaction</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -220,7 +221,7 @@ export default function App() {
   const [tab, setTab] = useState("fixed");
   const [chart, setChart] = useState("apy");
   const [amt, setAmt] = useState("");
-  const [wallet, setWallet] = useState(false);
+  const w = useWallet(); const wallet = w.connected;
   const [walletModal, setWalletModal] = useState(false);
   const [tokenModal, setTokenModal] = useState(false);
   const [txReview, setTxReview] = useState(false);
@@ -277,8 +278,8 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-yield" /><span className="text-[10px] text-muted-foreground">Mainnet</span></div>
-          <Button onClick={() => wallet ? setWallet(false) : setWalletModal(true)} variant={wallet ? "outline" : "default"} size="sm" className={`text-xs h-8 ${!wallet ? "bg-sn-grad border-0" : ""}`}>
-            {wallet ? <><Wallet size={12} className="mr-1.5" />0x7a3f…e91d</> : "Connect Wallet"}
+          <Button onClick={() => wallet ? w.disconnect() : setWalletModal(true)} variant={wallet ? "outline" : "default"} size="sm" className={`text-xs h-8 ${!wallet ? "bg-gradient-to-r from-indigo-600 to-purple-600 border-0" : ""}`}>
+            {wallet ? <><Wallet size={12} className="mr-1.5" />{w.shortAddress}</> : "Connect Wallet"}
           </Button>
         </div>
       </header>
@@ -512,7 +513,7 @@ export default function App() {
                     style={{ background: wallet ? apyColor : undefined }}
                     variant={wallet ? "default" : "default"}
                   >
-                    {!wallet ? <span className="bg-sn-grad bg-clip-text">Connect Wallet</span> : tab === "fixed" ? "Lock Fixed Yield" : tab === "yield" ? "Long Yield" : tab === "mint" ? "Mint PT + YT" : "Add Liquidity"}
+                    {!wallet ? <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text">Connect Wallet</span> : tab === "fixed" ? "Lock Fixed Yield" : tab === "yield" ? "Long Yield" : tab === "mint" ? "Mint PT + YT" : "Add Liquidity"}
                   </Button>
 
                   {/* Tongo shield */}
@@ -553,7 +554,7 @@ export default function App() {
               <Wallet size={32} className="mx-auto text-muted-foreground mb-3" />
               <div className="text-lg font-semibold mb-2">Connect Your Wallet</div>
               <div className="text-sm text-muted-foreground mb-4">View your positions, accrued yield, and transaction history.</div>
-              <Button onClick={() => setWalletModal(true)} className="bg-sn-grad">Connect Wallet</Button>
+              <Button onClick={() => setWalletModal(true)} className="bg-gradient-to-r from-indigo-600 to-purple-600">Connect Wallet</Button>
             </div>
           ) : (
             <div className="space-y-4">
@@ -625,7 +626,7 @@ export default function App() {
       </footer>
 
       {/* ── MODALS ── */}
-      <WalletModal open={walletModal} onClose={() => setWalletModal(false)} onConnect={() => { setWallet(true); setWalletModal(false); }} />
+      <WalletModal open={walletModal} onClose={() => setWalletModal(false)} onConnect={() => { w.connect(); setWalletModal(false); }} />
       <TokenSelector open={tokenModal} onClose={() => setTokenModal(false)} onSelect={setPayToken} current={payToken} />
       <TxReview open={txReview} onClose={() => setTxReview(false)} onConfirm={doTx}
         data={{ payAmt: amt || "0", payToken, rcvAmt: out, rcvToken, apy, apyColor, priceImpact: `${priceImpact < 0.1 ? "<0.01" : priceImpact.toFixed(2)}%`, fee: "0.30%", route: `${payToken} → SY → ${rcvToken}`, minReceived: `${(parseFloat(out || "0") * (1 - slippage/100)).toFixed(4)} ${rcvToken}` }} />
