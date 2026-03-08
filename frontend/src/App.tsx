@@ -478,31 +478,6 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
 
 // ═══════ DASHBOARD ═══════
 function DashboardPage({ w }: { w: ReturnType<typeof useWallet> }) {
-  const [lpSy, setLpSy] = useState(""); const [lpPt, setLpPt] = useState("");
-  const [depositAmt, setDepositAmt] = useState("");
-  const [txStatus, setTxStatus] = useState<"pending" | "success" | "error" | null>(null);
-  const [txError, setTxError] = useState("");
-
-  const doDeposit = async () => {
-    if (!depositAmt || parseFloat(depositAmt) <= 0) return;
-    setTxStatus("pending"); setTxError("");
-    try {
-      const txHash = await w.stakeAndDeposit(depositAmt);
-      if (txHash) { setTxStatus("success"); setDepositAmt(""); }
-      else setTxStatus("error");
-    } catch (e: any) { setTxError(e?.message?.slice(0, 120) || "Failed"); setTxStatus("error"); }
-  };
-
-  const doAddLP = async () => {
-    if (!lpSy || !lpPt || parseFloat(lpSy) <= 0 || parseFloat(lpPt) <= 0) return;
-    setTxStatus("pending"); setTxError("");
-    try {
-      const txHash = await w.addLiquidity(lpSy, lpPt);
-      if (txHash) { setTxStatus("success"); setLpSy(""); setLpPt(""); }
-      else setTxStatus("error");
-    } catch (e: any) { setTxError(e?.message?.slice(0, 120) || "Failed"); setTxStatus("error"); }
-  };
-
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "48px 20px" }}>
       {!w.connected ? (
@@ -523,51 +498,35 @@ function DashboardPage({ w }: { w: ReturnType<typeof useWallet> }) {
               </div>
             ))}
           </div>
-          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22, marginBottom: 16 }}>
+          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22 }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Active Positions</div>
-            {[{ token: "PT-xSTRK", amount: w.balances.PT, apy: "5.8%", color: C.teal }, { token: "YT-xSTRK", amount: w.balances.YT, apy: "14.3%", color: C.amber }, { token: "SY-xSTRK", amount: w.balances.SY, apy: "-", color: C.blue }]
+            {[{ token: "PT-xSTRK", amount: w.balances.PT, desc: "Fixed yield · redeemable 1:1 at maturity", apy: "7.2%", color: C.teal },
+              { token: "YT-xSTRK", amount: w.balances.YT, desc: "Variable yield · earns staking rewards", apy: "14.3%", color: C.amber },
+              { token: "SY-xSTRK", amount: w.balances.SY, desc: "Wrapped xSTRK · used for AMM liquidity", apy: "6.5%", color: C.blue }]
               .filter(p => p.amount !== "0" && parseFloat(p.amount) > 0).map((p, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: `1px solid ${C.border}` }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: `${p.color}12`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: p.color }}>{p.token.slice(0, 2)}</div>
-                    <div><div style={{ fontSize: 14, fontWeight: 500 }}>{p.token}</div><div style={{ fontSize: 11, color: C.textDim, fontFamily: mono }}>{p.amount}</div></div>
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 10, background: `${p.color}10`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: p.color }}>{p.token.slice(0, 2)}</div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{p.token}</div>
+                      <div style={{ fontSize: 11, color: C.textDim, fontWeight: 300 }}>{p.desc}</div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 13, fontFamily: mono, color: p.color, fontWeight: 600, alignSelf: "center" }}>{p.apy}</div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, fontFamily: mono, color: p.color }}>{p.amount}</div>
+                    <div style={{ fontSize: 11, color: C.textDim, fontFamily: mono }}>{p.apy} APY</div>
+                  </div>
                 </div>
               ))}
-            {parseFloat(w.balances.PT || "0") === 0 && parseFloat(w.balances.YT || "0") === 0 && parseFloat(w.balances.SY || "0") === 0 && <div style={{ fontSize: 13, color: C.textDim, textAlign: "center", padding: 24 }}>No positions yet. Start trading to see your positions here.</div>}
+            {parseFloat(w.balances.PT || "0") === 0 && parseFloat(w.balances.YT || "0") === 0 && parseFloat(w.balances.SY || "0") === 0 && (
+              <div style={{ textAlign: "center", padding: "32px 0" }}>
+                <div style={{ fontSize: 14, color: C.textDim, marginBottom: 12 }}>No positions yet</div>
+                <div style={{ fontSize: 12, color: C.textSec, fontWeight: 300 }}>Go to Markets to deposit and start earning yield.</div>
+              </div>
+            )}
           </div>
-
-          {/* Deposit STRK → SY (no split) */}
-          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22, marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Deposit STRK → SY <span style={{ fontSize: 11, color: C.textDim, fontWeight: 300 }}>(stakes via Endur, no split)</span></div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input value={depositAmt} onChange={e => setDepositAmt(e.target.value)} placeholder="Amount in STRK" type="number" style={{ flex: 1, background: C.bgInput, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 14, fontFamily: mono, outline: "none" }} />
-              <button onClick={doDeposit} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#000", background: C.teal, fontFamily: font, whiteSpace: "nowrap" }}>Deposit → SY</button>
-            </div>
-          </div>
-
-          {/* Add LP */}
-          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22, marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Add Liquidity <span style={{ fontSize: 11, color: C.textDim, fontWeight: 300 }}>(SY + PT → AMM)</span></div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input value={lpSy} onChange={e => setLpSy(e.target.value)} placeholder="SY amount" type="number" style={{ flex: 1, minWidth: 120, background: C.bgInput, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 14, fontFamily: mono, outline: "none" }} />
-              <span style={{ fontSize: 12, color: C.textDim }}>+</span>
-              <input value={lpPt} onChange={e => setLpPt(e.target.value)} placeholder="PT amount" type="number" style={{ flex: 1, minWidth: 120, background: C.bgInput, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 14, fontFamily: mono, outline: "none" }} />
-              <button onClick={doAddLP} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#000", background: C.amber, fontFamily: font, whiteSpace: "nowrap" }}>Add LP</button>
-            </div>
-            <div style={{ fontSize: 10, color: C.textDim, marginTop: 8, fontWeight: 300 }}>Recommended ratio: ~0.982 SY per 1 PT (reflects 7.2% APY, 91d maturity)</div>
-          </div>
-
-          {parseFloat(w.balances.YT || "0") > 0 && (
-            <div style={{ background: `${C.teal}08`, border: `1px solid ${C.teal}22`, borderRadius: 14, padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-              <div><div style={{ fontSize: 12, color: C.textSec, marginBottom: 4 }}>Claimable from YT-xSTRK</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: mono, color: C.teal }}>{w.balances.YT} YT-xSTRK</div></div>
-              <button onClick={() => w.claimYield()} style={{ padding: "10px 24px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#000", background: C.teal, fontFamily: font }}>Claim Yield</button>
-            </div>
-          )}
         </div>
       )}
-      {txStatus && <TxToast status={txStatus} hash={w.lastTxHash} errorMsg={txError} onClose={() => { setTxStatus(null); setTxError(""); }} />}
     </div>
   );
 }
