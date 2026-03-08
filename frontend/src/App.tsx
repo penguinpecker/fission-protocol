@@ -1,16 +1,14 @@
 import { useState, useMemo } from "react";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Line, ComposedChart } from "recharts";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Line, ComposedChart } from "recharts";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip as Tip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Settings, ChevronDown, ArrowDown, Search, Check, ExternalLink, Shield, Info, X, Wallet, BarChart3, TrendingUp, Droplets, LayoutDashboard, RefreshCw, Copy, AlertTriangle, Loader2, CheckCircle2, Clock } from "lucide-react";
+import { Settings, ChevronDown, ArrowDown, Search, Check, ExternalLink, Shield, Info, X, Wallet, BarChart3, TrendingUp, LayoutDashboard, RefreshCw, AlertTriangle, Loader2, CheckCircle2 } from "lucide-react";
 import { MARKETS, YIELD_DATA, PT_DATA, TOKENS, POSITIONS, daysTo, fmt, type Market } from "./data";
 
 /* ══════════════════════════════════════════════════════════════════════════
