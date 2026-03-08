@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from "react";
-import { hash } from "starknet";
+import { hash, RpcProvider } from "starknet";
 
 const RPC = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/BQZCAx-0XGUVdVEvVRi7U";
+const alchemyProvider = new RpcProvider({ nodeUrl: RPC });
 
 export const ADDRS = {
   CORE: "0x00373485f84822c3dcdfbfc273ab262f1ff529c81d5dfbe7115b3bd7489043d8",
@@ -120,32 +121,44 @@ export function useWallet() {
   }, [state.connected, state.address, fetchBalances]);
 
   // Real transaction: approve + call contract
+  // Patches wallet's account.provider to use our Alchemy RPC (avoids OnFinality rate limits)
   const sendTx = useCallback(async (calls: { contractAddress: string; entrypoint: string; calldata: string[] }[]): Promise<string> => {
     if (!state.starknet) throw new Error("Not connected");
     let txHash = "";
 
-    // Format for account.execute (starknet.js style)
     const jsCalls = calls.map(c => ({
       contractAddress: c.contractAddress,
       entrypoint: c.entrypoint,
       calldata: c.calldata,
     }));
 
-    // Try account.execute() — Braavos & ArgentX standard
     const account = (state.starknet as any).account;
     if (account && typeof account.execute === "function") {
+      // Override wallet's default RPC with our Alchemy provider
+      // This fixes "Too Many Requests" from OnFinality public RPC
+      const origProvider = account.provider;
+      try {
+        account.provider = alchemyProvider;
+        // @ts-ignore — channel may exist on some wallet implementations
+        if (account.channel) account.channel = alchemyProvider.channel;
+      } catch { /* some wallets freeze account object */ }
+
       const result = await account.execute(jsCalls);
       txHash = result?.transaction_hash || "";
+
+      // Restore original provider
+      try { account.provider = origProvider; } catch {}
     } else {
-      // Fallback: wallet API
-      const apiCalls = calls.map(c => ({
-        contract_address: c.contractAddress,
-        entry_point: c.entrypoint,
-        calldata: c.calldata,
-      }));
+      // Fallback: wallet API (wallet handles its own RPC)
       const result: any = await state.starknet.request({
         type: "wallet_addInvokeTransaction",
-        params: { calls: apiCalls },
+        params: {
+          calls: calls.map(c => ({
+            contract_address: c.contractAddress,
+            entry_point: c.entrypoint,
+            calldata: c.calldata,
+          })),
+        },
       });
       txHash = result?.transaction_hash || (typeof result === "string" ? result : "");
     }
