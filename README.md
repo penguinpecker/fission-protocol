@@ -2,9 +2,9 @@
 
 **Pendle-like Yield Tokenization for Bitcoin on Starknet**
 
-Split yield-bearing BTC and STRK positions into tradeable Principal Tokens (PT) and Yield Tokens (YT). Lock in fixed yield, speculate on variable rates, or earn swap fees — with optional privacy via Tongo confidential transfers.
+Split yield-bearing BTC and STRK positions into tradeable Principal Tokens (PT) and Yield Tokens (YT). Lock in fixed yield, speculate on variable rates, or earn swap fees.
 
-**RE{DEFINE} Hackathon** — Bitcoin Track + Privacy Track
+**RE{DEFINE} Hackathon** — Bitcoin Track
 
 ---
 
@@ -79,7 +79,6 @@ chmod +x deploy.sh
 5. **Provide liquidity** to earn swap fees with minimal IL at maturity
 6. **Redeem** PT 1:1 for underlying after maturity
 7. **Claim** accrued yield from YT holdings anytime
-8. **Shield** positions with Tongo for confidential balances (optional)
 
 ## Frontend Screens
 
@@ -93,7 +92,6 @@ chmod +x deploy.sh
 - **Tx Status Toast** — Pending/success/error with Starkscan link
 - **APY Breakdown Tooltip** — Component yield sources
 - **Keep YT Mode** — LP tab toggle (Pendle feature)
-- **Tongo Shield** — Privacy toggle
 
 ## Tech Stack
 
@@ -107,7 +105,6 @@ chmod +x deploy.sh
 | Charts | Recharts |
 | Icons | Lucide React |
 | Theme | Starknet brand (#0C0C4F, IBM Plex Sans) |
-| Privacy | Tongo SDK (ElGamal confidential ERC20) |
 
 ## Hackathon Alignment
 
@@ -117,9 +114,6 @@ chmod +x deploy.sh
 - Vault curator/manager system
 - Leverage looping for BTC
 
-### Privacy Track ✅
-- Private yield on BTC (via Tongo)
-- Private yield on stables (via Tongo)
 
 ## License
 
