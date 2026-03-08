@@ -1,645 +1,528 @@
+import { useState, useMemo } from "react";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ComposedChart, Line } from "recharts";
 import { useWallet } from "./hooks/useWallet";
 
-import { useState, useMemo } from "react";
-import { Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Line, ComposedChart } from "recharts";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip as Tip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Settings, ChevronDown, ArrowDown, Search, Check, ExternalLink, Shield, Info, X, Wallet, BarChart3, TrendingUp, LayoutDashboard, RefreshCw, AlertTriangle, Loader2, CheckCircle2 } from "lucide-react";
-import { MARKETS, YIELD_DATA, PT_DATA, TOKEN_LIST, daysTo, fmt, type Market } from "./data";
+/* ═══════════════════════════════════════════════════════════
+   FISSION PROTOCOL v2 — Full Redesign
+   BTC-warm palette · Custom SVG icons · Real wallet
+   Flow: Landing → Markets → Strategy → Trade + Dashboard
+   ═══════════════════════════════════════════════════════════ */
 
-/* ══════════════════════════════════════════════════════════════════════════
-   FISSION PROTOCOL — Complete DeFi Frontend
-   Every screen + modal from Pendle, themed with Starknet brand
-   ══════════════════════════════════════════════════════════════════════════ */
+// ── Colors ──
+const C = {
+  bg: "#0A0A0F", bgCard: "#111118", bgHover: "#16161F", bgInput: "#0D0D14",
+  border: "rgba(247,147,26,0.06)", borderHover: "rgba(247,147,26,0.15)",
+  text: "#F0EDE8", textSec: "#9A958C", textDim: "#5A564F",
+  amber: "#F7931A", amberLight: "#FFAB40",
+  teal: "#2DD4A8", blue: "#5C94FF",
+  red: "#EF4444", coral: "#E97880", slate: "#64748B",
+  gradHero: "linear-gradient(135deg, #1a1208 0%, #0A0A0F 50%, #0d1117 100%)",
+  gradBtn: "linear-gradient(135deg, #F7931A 0%, #FFAB40 100%)",
+};
+const font = "'Outfit', 'DM Sans', sans-serif";
+const mono = "'JetBrains Mono', monospace";
 
-// ── WALLET CONNECT MODAL ──────────────────────────────────────────────────
-function WalletModal({ open, onClose, onConnect }: { open: boolean; onClose: () => void; onConnect: () => void }) {
-  const wallets = [
-    { name: "Argent X (Ready)", desc: "Most popular on Starknet", icon: "🔷" },
-    { name: "Braavos", desc: "Smart wallet with 2FA", icon: "🛡" },
-    { name: "Xverse", desc: "Bitcoin + Starknet", icon: "₿" },
-    { name: "MetaMask Snap", desc: "Via Starknet snap", icon: "🦊" },
-  ];
+// ── Chart generators ──
+const mkYield = (base: number, vol: number, n = 60) => Array.from({ length: n }, (_, i) => ({
+  d: i,
+  underlying: +(base + Math.sin(i * 0.2) * vol + (Math.random() - 0.5) * vol * 0.6).toFixed(2),
+  implied: +(base + 0.8 + Math.sin(i * 0.15) * vol * 0.5 + (Math.random() - 0.5) * vol * 0.4).toFixed(2),
+  fixed: base - 0.7,
+}));
+const mkPT = (start: number, n = 60) => Array.from({ length: n }, (_, i) => ({
+  d: i,
+  price: +Math.min(start + (1 - start) * (i / n) ** 0.55 + (Math.random() - 0.5) * 0.004, 1).toFixed(4),
+  target: 1.0,
+}));
+const mkMini = (base: number, vol: number, n = 30) => Array.from({ length: n }, (_, i) => ({
+  d: i, v: +(base + Math.sin(i * 0.3) * vol + (Math.random() - 0.5) * vol * 0.5).toFixed(2),
+}));
+const ptMini = (start: number, n = 30) => Array.from({ length: n }, (_, i) => ({
+  d: i, price: +Math.min(start + (1 - start) * (i / n) ** 0.5 + (Math.random() - 0.5) * 0.003, 1).toFixed(4),
+}));
+
+const YIELD_DATA = [mkYield(6.5, 2.2), mkYield(5.1, 3.5)];
+const PT_DATA = [mkPT(0.942), mkPT(0.955)];
+
+// ── Market config ──
+interface Market {
+  id: number; sym: string; name: string; protocol: string; maturity: string; daysLeft: number;
+  tvl: string; vol: string; underlyingApy: number; fixedApy: number; longApy: number;
+  impliedApy: number; ptPrice: number; ytPrice: number; tag: string; accent: string;
+  ptSupply: string; ytSupply: string;
+}
+const MARKETS: Market[] = [
+  { id: 0, sym: "xSTRK", name: "Endur Staked STRK", protocol: "Endur", maturity: "Jun 8, 2026", daysLeft: 92, tvl: "$2.45M", vol: "$185K", underlyingApy: 6.5, fixedApy: 5.8, longApy: 14.3, impliedApy: 7.2, ptPrice: 0.9712, ytPrice: 0.0288, tag: "STRK", accent: C.blue, ptSupply: "1200K", ytSupply: "1200K" },
+  { id: 1, sym: "xLBTC", name: "Endur Staked LBTC", protocol: "Endur", maturity: "Jun 8, 2026", daysLeft: 92, tvl: "$890K", vol: "$67K", underlyingApy: 5.1, fixedApy: 4.6, longApy: 22.7, impliedApy: 8.4, ptPrice: 0.977, ytPrice: 0.023, tag: "BTC", accent: C.amber, ptSupply: "420K", ytSupply: "420K" },
+];
+
+interface Strategy {
+  id: "pt" | "yt" | "split"; title: string; subtitle: string; color: string;
+  risk: string; horizon: string; desc: string; details: string[];
+}
+const STRATEGIES: Strategy[] = [
+  { id: "pt", title: "Fixed Yield", subtitle: "Buy PT", color: C.teal, risk: "Low", horizon: "Hold to maturity",
+    desc: "Lock in a guaranteed fixed APY. Buy PT at a discount, redeem 1:1 at maturity. Zero exposure to rate volatility.",
+    details: ["Buy PT at discount (e.g. 0.97 SY)", "Redeem 1:1 at maturity for guaranteed profit", "No risk from yield rate changes", "Best for: Conservative yield farmers"] },
+  { id: "yt", title: "Long Yield", subtitle: "Buy YT", color: C.amber, risk: "High", horizon: "Active management",
+    desc: "Leveraged bet on rising yield rates. Small capital, amplified returns if rates stay high or increase.",
+    details: ["Buy YT for a fraction of underlying value", "Earn ALL yield generated by the position", "If rates rise → outsized returns (up to 30x)", "Best for: Yield speculators"] },
+  { id: "split", title: "Split & LP", subtitle: "Mint PT + YT", color: "#8B8BFF", risk: "Medium", horizon: "Flexible",
+    desc: "Deposit SY to mint equal PT + YT. Sell one side or provide LP with both for swap fees.",
+    details: ["Deposit SY → receive equal PT + YT", "Provide PT+SY liquidity (0.3% fee share)", "Minimal impermanent loss at maturity", "Best for: LP providers & advanced users"] },
+];
+
+// ── SVG Icons ──
+function IconShield({ size = 40, color = C.teal }: { size?: number; color?: string }) {
+  return (<svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+    <path d="M20 4L6 10V18C6 27.1 12.04 35.52 20 38C27.96 35.52 34 27.1 34 18V10L20 4Z" stroke={color} strokeWidth="2" fill={`${color}10`} />
+    <path d="M15 20L18 23L26 15" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>);
+}
+function IconRocket({ size = 40, color = C.amber }: { size?: number; color?: string }) {
+  return (<svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+    <path d="M20 6C20 6 14 12 14 22C14 26 16 30 20 34C24 30 26 26 26 22C26 12 20 6 20 6Z" stroke={color} strokeWidth="2" fill={`${color}10`} />
+    <circle cx="20" cy="20" r="3" fill={color} />
+    <path d="M14 22C10 22 8 26 8 26L14 24" stroke={color} strokeWidth="1.5" />
+    <path d="M26 22C30 22 32 26 32 26L26 24" stroke={color} strokeWidth="1.5" />
+  </svg>);
+}
+function IconAtom({ size = 40, color = "#8B8BFF" }: { size?: number; color?: string }) {
+  return (<svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+    <ellipse cx="20" cy="20" rx="14" ry="6" stroke={color} strokeWidth="1.5" />
+    <ellipse cx="20" cy="20" rx="14" ry="6" stroke={color} strokeWidth="1.5" transform="rotate(60 20 20)" />
+    <ellipse cx="20" cy="20" rx="14" ry="6" stroke={color} strokeWidth="1.5" transform="rotate(120 20 20)" />
+    <circle cx="20" cy="20" r="3" fill={color} />
+  </svg>);
+}
+function IconDeposit() {
+  return (<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect x="4" y="6" width="24" height="20" rx="3" stroke={C.amber} strokeWidth="1.5" fill={`${C.amber}08`} /><path d="M16 12V22M16 22L12 18M16 22L20 18" stroke={C.amber} strokeWidth="1.5" strokeLinecap="round" /></svg>);
+}
+function IconSplitSvg() {
+  return (<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="8" r="4" stroke={C.amber} strokeWidth="1.5" fill={`${C.amber}08`} /><path d="M16 12V18" stroke={C.amber} strokeWidth="1.5" /><path d="M16 18L10 24" stroke={C.teal} strokeWidth="1.5" strokeLinecap="round" /><path d="M16 18L22 24" stroke={C.amber} strokeWidth="1.5" strokeLinecap="round" /><circle cx="10" cy="24" r="3" stroke={C.teal} strokeWidth="1.5" fill={`${C.teal}08`} /><circle cx="22" cy="24" r="3" stroke={C.amber} strokeWidth="1.5" fill={`${C.amber}08`} /></svg>);
+}
+function IconTradeSvg() {
+  return (<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><path d="M6 24L12 16L18 20L26 8" stroke={C.amber} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M20 8H26V14" stroke={C.amber} strokeWidth="1.5" strokeLinecap="round" /><path d="M6 24L12 16L18 20L26 8V24H6Z" fill={`${C.amber}08`} /></svg>);
+}
+function IconRedeem() {
+  return (<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="10" stroke={C.teal} strokeWidth="1.5" fill={`${C.teal}08`} /><path d="M12 16L15 19L20 13" stroke={C.teal} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>);
+}
+function IconLP({ size = 24 }: { size?: number }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none"><path d="M12 3C7 3 3 7 3 12C3 17 7 21 12 21C17 21 21 17 21 12" stroke={C.amber} strokeWidth="1.5" strokeLinecap="round" /><path d="M21 12C21 7 17 3 12 3" stroke={C.teal} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="3 3" /><circle cx="12" cy="12" r="2" fill={C.amber} /></svg>);
+}
+function FissionLogo({ size = 24 }: { size?: number }) {
+  return (<svg width={size} height={size} viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="11" stroke={C.amber} strokeWidth="1.5" /><circle cx="14" cy="14" r="4" fill={C.amber} /><line x1="14" y1="3" x2="14" y2="25" stroke={C.amber} strokeWidth="0.8" opacity="0.3" /><line x1="3" y1="14" x2="25" y2="14" stroke={C.amber} strokeWidth="0.8" opacity="0.3" /></svg>);
+}
+
+function getIcon(id: string, size = 40) {
+  if (id === "pt") return <IconShield size={size} color={C.teal} />;
+  if (id === "yt") return <IconRocket size={size} color={C.amber} />;
+  return <IconAtom size={size} color="#8B8BFF" />;
+}
+
+// ── Shared components ──
+function Chip({ children, color = C.textDim }: { children: React.ReactNode; color?: string }) {
+  return <span style={{ fontSize: 10, fontWeight: 600, color, padding: "3px 10px", borderRadius: 20, border: `1px solid ${color}22`, background: `${color}06`, letterSpacing: "0.02em" }}>{children}</span>;
+}
+
+function ChartTip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  return <div style={{ background: C.bgCard, border: `1px solid ${C.borderHover}`, borderRadius: 6, padding: "6px 10px", fontFamily: mono, fontSize: 11 }}>{payload.map((p: any, i: number) => <div key={i} style={{ color: p.color || C.text }}>{typeof p.value === "number" ? p.value.toFixed(2) : p.value}</div>)}</div>;
+}
+
+function TxToast({ status, hash, onClose }: { status: "pending" | "success" | "error"; hash: string; onClose: () => void }) {
+  const cfg = { pending: { color: C.amber, title: "Transaction Pending", desc: "Confirming on Starknet..." }, success: { color: C.teal, title: "Transaction Confirmed", desc: hash ? `${hash.slice(0, 10)}...${hash.slice(-6)}` : "Success" }, error: { color: C.red, title: "Transaction Failed", desc: "Please try again" } }[status];
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-[#0C0C2E] border-primary/10 max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="text-base font-semibold">Connect Wallet</DialogTitle>
-        </DialogHeader>
-        <div className="text-xs text-muted-foreground mb-3">Select a wallet to connect to Fission Protocol on Starknet Mainnet.</div>
-        <div className="space-y-1.5">
-          {wallets.map(w => (
-            <button key={w.name} onClick={onConnect} className="w-full flex items-center gap-3 p-3 rounded-lg border border-primary/5 hover:border-primary/15 hover:bg-primary/5 transition-all text-left">
-              <span className="text-lg w-8 text-center">{w.icon}</span>
-              <div><div className="text-sm font-medium">{w.name}</div><div className="text-xs text-muted-foreground">{w.desc}</div></div>
-            </button>
-          ))}
-        </div>
-        <div className="text-[10px] text-muted-foreground text-center mt-2">By connecting, you agree to Fission's Terms of Service</div>
-      </DialogContent>
-    </Dialog>
+    <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 100, background: C.bgCard, border: `1px solid ${cfg.color}33`, borderRadius: 12, padding: 16, minWidth: 280, boxShadow: `0 8px 32px rgba(0,0,0,0.5)` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div><div style={{ fontSize: 14, fontWeight: 600, color: cfg.color, marginBottom: 4 }}>{cfg.title}</div><div style={{ fontSize: 11, color: C.textSec, fontFamily: mono }}>{cfg.desc}</div></div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.textDim, cursor: "pointer", fontSize: 16, padding: 4 }}>×</button>
+      </div>
+      {hash && status === "success" && <a href={`https://voyager.online/tx/${hash}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.amber, marginTop: 8, display: "inline-block" }}>View on Voyager →</a>}
+    </div>
   );
 }
 
-// ── SLIPPAGE SETTINGS POPOVER ─────────────────────────────────────────────
-function SlippageSettings() {
-  const [slippage, setSlippage] = useState(0.5);
-  const [deadline, setDeadline] = useState(30);
-  const [custom, setCustom] = useState(false);
+// ═══════ LANDING PAGE ═══════
+function LandingPage({ onEnter }: { onEnter: () => void }) {
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button className="p-1.5 rounded-md hover:bg-primary/5 transition-colors"><Settings size={14} className="text-muted-foreground" /></button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 bg-[#0C0C2E] border-primary/10 p-4" align="end">
-        <div className="text-sm font-semibold mb-3">Transaction Settings</div>
-        <div className="text-xs text-muted-foreground mb-2">Slippage Tolerance</div>
-        <div className="flex gap-1.5 mb-3">
-          {[0.1, 0.5, 1.0].map(v => (
-            <button key={v} onClick={() => { setSlippage(v); setCustom(false); }}
-              className={`flex-1 py-1.5 rounded text-xs font-medium transition-all ${!custom && slippage === v ? "bg-primary/15 text-primary border border-primary/20" : "bg-secondary border border-transparent hover:border-primary/10"}`}>
-              {v}%
-            </button>
-          ))}
-          <button onClick={() => setCustom(true)}
-            className={`flex-1 py-1.5 rounded text-xs font-medium transition-all ${custom ? "bg-primary/15 text-primary border border-primary/20" : "bg-secondary border border-transparent hover:border-primary/10"}`}>
-            Custom
-          </button>
-        </div>
-        {custom && (
-          <div className="flex items-center gap-2 mb-3">
-            <Input type="number" value={slippage} onChange={e => setSlippage(+e.target.value)} className="h-8 text-xs bg-[#080826] border-primary/10" />
-            <span className="text-xs text-muted-foreground">%</span>
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font }}>
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 clamp(16px,4vw,40px)", height: 64, borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}><FissionLogo /><span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.04em" }}>fission</span></div>
+        <button onClick={onEnter} style={{ padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#000", background: C.gradBtn, fontFamily: font }}>Launch App →</button>
+      </header>
+      <div style={{ background: C.gradHero, position: "relative" }}>
+        <div style={{ position: "absolute", top: -60, left: "50%", transform: "translateX(-50%)", width: 800, height: 500, background: "radial-gradient(ellipse, rgba(247,147,26,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "clamp(60px,10vw,100px) clamp(16px,4vw,40px) 80px", textAlign: "center", position: "relative" }}>
+          <Chip color={C.amber}>RE{"{DEFINE}"} Hackathon · Bitcoin + Privacy Track</Chip>
+          <h1 style={{ fontSize: "clamp(32px,6vw,58px)", fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1.08, margin: "28px 0 18px" }}>Split your yield.<br /><span style={{ color: C.amber }}>Trade your future.</span></h1>
+          <p style={{ fontSize: "clamp(14px,2vw,17px)", color: C.textSec, lineHeight: 1.7, maxWidth: 560, margin: "0 auto 36px", fontWeight: 300 }}>Fission tokenizes yield-bearing BTC and STRK into tradeable Principal Tokens and Yield Tokens. Lock fixed rates, speculate on yields, or earn LP fees.</p>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <button onClick={onEnter} style={{ padding: "13px 36px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#000", background: C.gradBtn, fontFamily: font }}>Start Trading</button>
+            <button style={{ padding: "13px 36px", borderRadius: 10, cursor: "pointer", fontSize: 15, fontWeight: 400, color: C.textSec, background: "transparent", border: `1px solid ${C.border}`, fontFamily: font }}>Read Docs</button>
           </div>
-        )}
-        {slippage > 3 && <div className="flex items-center gap-1.5 text-[10px] text-amber-400 mb-2"><AlertTriangle size={10} />High slippage may result in unfavorable rates</div>}
-        <div className="text-xs text-muted-foreground mb-2">Transaction Deadline</div>
-        <div className="flex items-center gap-2">
-          <Input type="number" value={deadline} onChange={e => setDeadline(+e.target.value)} className="h-8 w-20 text-xs bg-[#080826] border-primary/10" />
-          <span className="text-xs text-muted-foreground">minutes</span>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// ── TOKEN SELECTOR MODAL ──────────────────────────────────────────────────
-function TokenSelector({ open, onClose, onSelect, current }: { open: boolean; onClose: () => void; onSelect: (s: string) => void; current: string }) {
-  const [search, setSearch] = useState("");
-  const filtered = TOKEN_LIST.filter(t => t.sym.toLowerCase().includes(search.toLowerCase()) || t.name.toLowerCase().includes(search.toLowerCase()));
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-[#0C0C2E] border-primary/10 max-w-sm">
-        <DialogHeader><DialogTitle className="text-base">Select Token</DialogTitle></DialogHeader>
-        <div className="relative mb-3">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or symbol" className="pl-9 h-9 text-sm bg-[#080826] border-primary/10" />
-        </div>
-        <div className="flex gap-1.5 mb-3 flex-wrap">
-          {["STRK", "ETH", "USDC", "xSTRK", "xLBTC"].map(s => (
-            <button key={s} onClick={() => { onSelect(s); onClose(); }} className="px-2.5 py-1 rounded-full text-[10px] font-medium border border-primary/10 hover:border-primary/20 transition-colors">{s}</button>
-          ))}
-        </div>
-        <div className="space-y-0.5 max-h-48 overflow-y-auto">
-          {filtered.map(t => (
-            <button key={t.sym} onClick={() => { onSelect(t.sym); onClose(); }}
-              className={`w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-primary/5 transition-all ${t.sym === current ? "bg-primary/5" : ""}`}>
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">{t.sym[0]}</div>
-                <div><div className="text-sm font-medium text-left">{t.sym}</div><div className="text-[10px] text-muted-foreground">{t.name}</div></div>
-              </div>
-              <div className="text-right">
-                {t.sym === current && <Check size={12} className="text-primary ml-auto" />}
-              </div>
-            </button>
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ── TX REVIEW MODAL ───────────────────────────────────────────────────────
-function TxReview({ open, onClose, onConfirm, data }: { open: boolean; onClose: () => void; onConfirm: () => void; data: { payAmt: string; payToken: string; rcvAmt: string; rcvToken: string; apy: number; apyColor: string; priceImpact: string; fee: string; route: string; minReceived: string } }) {
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-[#0C0C2E] border-primary/10 max-w-sm">
-        <DialogHeader><DialogTitle className="text-base">Review Transaction</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div className="bg-[#080826] rounded-lg p-3 border border-primary/5">
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">You Pay</div>
-            <div className="flex justify-between items-center">
-              <span className="text-lg font-mono font-semibold">{data.payAmt}</span>
-              <span className="text-sm font-semibold">{data.payToken}</span>
-            </div>
-          </div>
-          <div className="flex justify-center"><ArrowDown size={16} className="text-muted-foreground" /></div>
-          <div className="bg-[#080826] rounded-lg p-3 border border-primary/5">
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">You Receive</div>
-            <div className="flex justify-between items-center">
-              <span className="text-lg font-mono font-semibold" style={{ color: data.apyColor }}>{data.rcvAmt}</span>
-              <span className="text-sm font-semibold" style={{ color: data.apyColor }}>{data.rcvToken}</span>
-            </div>
-          </div>
-          <div className="space-y-1.5 text-xs">
-            {[["APY", `${data.apy}%`, data.apyColor], ["Price Impact", data.priceImpact, "#34D399"], ["Route", data.route, ""], ["Min Received", data.minReceived, ""], ["Fee", data.fee, ""]].map(([l, v, c]) => (
-              <div key={l as string} className="flex justify-between py-1 border-b border-primary/5 last:border-0">
-                <span className="text-muted-foreground">{l}</span>
-                <span className="font-mono font-medium" style={{ color: (c as string) || undefined }}>{v}</span>
-              </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: "clamp(24px,4vw,56px)", marginTop: 72, paddingTop: 36, borderTop: `1px solid ${C.border}`, flexWrap: "wrap" }}>
+            {[["$3.34M", "Total Value Locked"], ["2", "Active Markets"], ["Jun 2026", "Next Maturity"], ["Tongo", "Privacy Layer"]].map(([v, l]) => (
+              <div key={l} style={{ textAlign: "center" }}><div style={{ fontSize: "clamp(18px,3vw,26px)", fontWeight: 700, fontFamily: mono }}>{v}</div><div style={{ fontSize: 11, color: C.textDim, marginTop: 6, textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 500 }}>{l}</div></div>
             ))}
           </div>
-          <Button onClick={onConfirm} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-90 text-white font-semibold">Confirm Transaction</Button>
         </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ── TX STATUS TOAST ───────────────────────────────────────────────────────
-function TxToast({ status, hash, onClose }: { status: "pending" | "success" | "error"; hash?: string; onClose: () => void }) {
-  if (!status) return null;
-  const cfg = { pending: { icon: <Loader2 size={16} className="animate-spin text-primary" />, title: "Transaction Pending", desc: "Confirming on Starknet...", bg: "border-primary/20" },
-    success: { icon: <CheckCircle2 size={16} className="text-yield" />, title: "Transaction Confirmed", desc: hash ? `${hash.slice(0,10)}...${hash.slice(-6)}` : "Success", bg: "border-yield/20" },
-    error: { icon: <X size={16} className="text-destructive" />, title: "Transaction Failed", desc: "Please try again", bg: "border-destructive/20" },
-  }[status];
-  return (
-    <div className={`fixed bottom-4 right-4 z-50 bg-[#0C0C2E] border ${cfg.bg} rounded-lg p-3 min-w-[280px] shadow-xl animate-in slide-in-from-bottom-4`}>
-      <div className="flex items-start gap-2.5">
-        {cfg.icon}
-        <div className="flex-1"><div className="text-sm font-medium">{cfg.title}</div><div className="text-xs text-muted-foreground font-mono">{cfg.desc}</div></div>
-        <button onClick={onClose}><X size={12} className="text-muted-foreground" /></button>
       </div>
-      {hash && <a href={`https://voyager.online/tx/${hash}`} target="_blank" className="flex items-center gap-1 text-[10px] text-primary mt-2 hover:underline"><ExternalLink size={10} />View on Voyager</a>}
-    </div>
-  );
-}
-
-// ── APY BREAKDOWN TOOLTIP ─────────────────────────────────────────────────
-function APYBreakdown({ m }: { m: Market }) {
-  return (
-    <TooltipProvider>
-      <Tip>
-        <TooltipTrigger><Info size={12} className="text-muted-foreground hover:text-primary cursor-help" /></TooltipTrigger>
-        <TooltipContent className="bg-[#0C0C2E] border-primary/10 p-3 max-w-[200px]">
-          <div className="text-xs font-semibold mb-2">APY Breakdown</div>
-          {[["Base Staking", `${(m.underlyingApy * 0.6).toFixed(1)}%`], ["STRK Rewards", `${(m.underlyingApy * 0.3).toFixed(1)}%`], ["BTCFi Bonus", `${(m.underlyingApy * 0.1).toFixed(1)}%`], ["Total Underlying", `${m.underlyingApy}%`]].map(([l, v], i) => (
-            <div key={i} className={`flex justify-between text-[10px] py-0.5 ${i === 3 ? "border-t border-primary/10 mt-1 pt-1 font-semibold" : "text-muted-foreground"}`}>
-              <span>{l}</span><span className="font-mono">{v}</span>
+      {/* How it works */}
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "80px clamp(16px,4vw,40px) 60px" }}>
+        <div style={{ textAlign: "center", marginBottom: 52 }}>
+          <div style={{ fontSize: 11, color: C.amber, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600, marginBottom: 10 }}>How it works</div>
+          <h2 style={{ fontSize: "clamp(22px,4vw,32px)", fontWeight: 700, letterSpacing: "-0.03em" }}>Four steps to yield mastery</h2>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 2 }}>
+          {[{ icon: <IconDeposit />, title: "Deposit", desc: "Deposit yield-bearing tokens (xSTRK or xLBTC) into the SY wrapper", num: "01" },
+            { icon: <IconSplitSvg />, title: "Split", desc: "Split SY into Principal Token (PT) and Yield Token (YT)", num: "02" },
+            { icon: <IconTradeSvg />, title: "Trade", desc: "Buy PT for fixed yield or YT for leveraged exposure", num: "03" },
+            { icon: <IconRedeem />, title: "Redeem", desc: "Redeem PT 1:1 at maturity, claim yield from YT anytime", num: "04" },
+          ].map(s => (
+            <div key={s.num} style={{ background: C.bgCard, padding: 28, borderTop: `2px solid ${s.num === "01" ? C.amber + "33" : C.border}` }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.amber, fontFamily: mono, marginBottom: 16, opacity: 0.6 }}>{s.num}</div>
+              <div style={{ marginBottom: 12 }}>{s.icon}</div><div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>{s.title}</div>
+              <div style={{ fontSize: 13, color: C.textSec, lineHeight: 1.6, fontWeight: 300 }}>{s.desc}</div>
             </div>
           ))}
-        </TooltipContent>
-      </Tip>
-    </TooltipProvider>
+        </div>
+      </div>
+      {/* Strategies */}
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px clamp(16px,4vw,40px) 100px" }}>
+        <div style={{ textAlign: "center", marginBottom: 52 }}>
+          <div style={{ fontSize: 11, color: C.amber, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600, marginBottom: 10 }}>Strategies</div>
+          <h2 style={{ fontSize: "clamp(22px,4vw,32px)", fontWeight: 700, letterSpacing: "-0.03em" }}>Choose your yield profile</h2>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+          {STRATEGIES.map(s => (
+            <div key={s.id} style={{ background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden", transition: "all 0.3s", cursor: "pointer" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${s.color}33`; (e.currentTarget as HTMLElement).style.transform = "translateY(-4px)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.border; (e.currentTarget as HTMLElement).style.transform = "translateY(0)"; }}
+              onClick={onEnter}>
+              <div style={{ height: 2, background: `linear-gradient(90deg, ${s.color}, transparent)` }} />
+              <div style={{ padding: "28px 24px 24px" }}>
+                {getIcon(s.id, 44)}
+                <div style={{ fontSize: 20, fontWeight: 700, marginTop: 16, marginBottom: 4 }}>{s.title}</div>
+                <div style={{ fontSize: 12, color: s.color, fontWeight: 600, marginBottom: 14 }}>{s.subtitle}</div>
+                <div style={{ fontSize: 13, color: C.textSec, lineHeight: 1.65, marginBottom: 18, fontWeight: 300 }}>{s.desc}</div>
+                <div style={{ display: "flex", gap: 8 }}><Chip color={s.color}>Risk: {s.risk}</Chip><Chip>{s.horizon}</Chip></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <footer style={{ borderTop: `1px solid ${C.border}`, padding: "24px clamp(16px,4vw,40px)", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: C.textDim, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><FissionLogo size={16} /><span style={{ fontWeight: 600, color: C.textSec }}>fission protocol</span></div>
+        <div style={{ display: "flex", gap: 20 }}>{["Docs", "GitHub", "Twitter"].map(l => <span key={l} style={{ cursor: "pointer" }}>{l}</span>)}</div>
+        <span>Starknet Mainnet</span>
+      </footer>
+    </div>
   );
 }
 
-// ── CHART TOOLTIP ─────────────────────────────────────────────────────────
-const ChartTip = ({ active, payload }: any) => {
-  if (!active || !payload?.length) return null;
+// ═══════ MARKETS PAGE ═══════
+function MarketsPage({ onSelect }: { onSelect: (id: number) => void }) {
   return (
-    <div className="bg-[#0C0C2E] border border-primary/10 rounded-md p-2 text-[11px] font-mono">
-      {payload.map((p: any, i: number) => <div key={i} style={{ color: p.color }}>{p.name}: {typeof p.value === "number" ? p.value.toFixed(2) : p.value}</div>)}
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "48px 20px" }}>
+      <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", marginBottom: 6 }}>Markets</h2>
+      <p style={{ fontSize: 13, color: C.textSec, fontWeight: 300, marginBottom: 32 }}>Select a yield-bearing market to trade</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16 }}>
+        {MARKETS.map(m => (
+          <button key={m.id} onClick={() => onSelect(m.id)} style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 24, cursor: "pointer", textAlign: "left", transition: "all 0.25s", fontFamily: font, color: C.text, width: "100%" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${m.accent}33`; (e.currentTarget as HTMLElement).style.transform = "translateY(-3px)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.border; (e.currentTarget as HTMLElement).style.transform = "translateY(0)"; }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: `${m.accent}10`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15, color: m.accent }}>{m.sym[0]}</div>
+                <div><div style={{ fontSize: 17, fontWeight: 700 }}>{m.sym}</div><div style={{ fontSize: 11, color: C.textDim, fontWeight: 300 }}>{m.protocol} · {m.name}</div></div>
+              </div>
+              <Chip color={m.accent}>{m.tag}</Chip>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+              {([["Fixed APY", `${m.fixedApy}%`, C.teal], ["Long Yield", `${m.longApy}%`, C.amber], ["TVL", m.tvl, C.text], ["Maturity", `${m.daysLeft}d`, C.coral]] as const).map(([l, v, c]) => (
+                <div key={l}><div style={{ fontSize: 9, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 5, fontWeight: 500 }}>{l}</div><div style={{ fontSize: 15, fontWeight: 600, fontFamily: mono, color: c }}>{v}</div></div>
+              ))}
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
-};
+}
 
-// ══════════════════════════════════════════════════════════════════════════
-// MAIN APP
-// ══════════════════════════════════════════════════════════════════════════
-export default function App() {
-  // Global state
-  const [page, setPage] = useState<"markets" | "trade" | "dashboard">("trade");
-  const [mkt, setMkt] = useState(0);
-  const [tab, setTab] = useState("fixed");
-  const [chart, setChart] = useState("apy");
+// ═══════ STRATEGY SELECTION ═══════
+function StrategyPage({ market, onSelect, onBack }: { market: number; onSelect: (s: string) => void; onBack: () => void }) {
+  const m = MARKETS[market];
+  const charts: Record<string, { d: number; v?: number; price?: number }[]> = { pt: ptMini(0.94), yt: mkMini(m.longApy, 6), split: mkMini(m.underlyingApy, 2) };
+  return (
+    <div style={{ maxWidth: 1020, margin: "0 auto", padding: "32px 20px" }}>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: C.textSec, cursor: "pointer", fontSize: 13, fontFamily: font, marginBottom: 24, fontWeight: 400 }}>← Back to Markets</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: `${m.accent}10`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14, color: m.accent }}>{m.sym[0]}</div>
+        <h2 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.03em" }}>{m.sym} Market</h2>
+        <Chip color={m.accent}>{m.tag}</Chip>
+      </div>
+      <p style={{ fontSize: 13, color: C.textSec, marginBottom: 36, fontWeight: 300 }}>Underlying APY: <span style={{ color: C.blue, fontFamily: mono, fontWeight: 600 }}>{m.underlyingApy}%</span> · Maturity: <span style={{ color: C.coral, fontFamily: mono }}>{m.maturity}</span> · TVL: <span style={{ fontFamily: mono }}>{m.tvl}</span></p>
+      <div style={{ fontSize: 11, color: C.amber, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600, marginBottom: 20 }}>Choose Your Strategy</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+        {STRATEGIES.map(s => {
+          const apyVal = s.id === "pt" ? m.fixedApy : s.id === "yt" ? m.longApy : m.underlyingApy;
+          return (
+            <div key={s.id} onClick={() => onSelect(s.id)} style={{ background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, cursor: "pointer", transition: "all 0.3s", overflow: "hidden" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${s.color}44`; (e.currentTarget as HTMLElement).style.transform = "translateY(-4px)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.border; (e.currentTarget as HTMLElement).style.transform = "translateY(0)"; }}>
+              <div style={{ height: 2, background: `linear-gradient(90deg, ${s.color}, transparent)` }} />
+              <div style={{ padding: "22px 20px 14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  {getIcon(s.id, 40)}
+                  <div style={{ textAlign: "right" }}><div style={{ fontSize: 9, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 500 }}>APY</div><div style={{ fontSize: 24, fontWeight: 700, fontFamily: mono, color: s.color }}>{apyVal}%</div></div>
+                </div>
+                <div style={{ fontSize: 19, fontWeight: 700, marginTop: 12, marginBottom: 2 }}>{s.title}</div>
+                <div style={{ fontSize: 12, color: s.color, fontWeight: 600, marginBottom: 10 }}>{s.subtitle}</div>
+              </div>
+              <div style={{ padding: "0 6px", height: 72 }}>
+                <ResponsiveContainer width="100%" height={72}>
+                  <AreaChart data={charts[s.id]}><defs><linearGradient id={`gs-${s.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={s.color} stopOpacity={0.15} /><stop offset="100%" stopColor={s.color} stopOpacity={0} /></linearGradient></defs>
+                    <Area dataKey={s.id === "pt" ? "price" : "v"} stroke={s.color} fill={`url(#gs-${s.id})`} strokeWidth={1.5} dot={false} /></AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ padding: "10px 20px 18px" }}>
+                <div style={{ fontSize: 12, color: C.textSec, lineHeight: 1.55, marginBottom: 14, fontWeight: 300 }}>{s.desc}</div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><Chip color={s.color}>Risk: {s.risk}</Chip><Chip>{s.horizon}</Chip></div>
+                <div style={{ padding: "11px 0", borderRadius: 10, background: s.color, color: s.id === "yt" ? "#000" : "#fff", fontSize: 13, fontWeight: 600, textAlign: "center", fontFamily: font }}>
+                  {s.id === "pt" ? "Lock Fixed Yield →" : s.id === "yt" ? "Long Yield →" : "Split & LP →"}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 20, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 22px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <IconLP size={28} />
+        <div style={{ flex: 1, minWidth: 200 }}><div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Liquidity providers earn <span style={{ color: C.amber }}>0.3%</span> on every swap</div><div style={{ fontSize: 11, color: C.textSec, fontWeight: 300 }}>All strategies route through the Fission AMM. LP is integrated into the Split strategy.</div></div>
+        <Chip color={C.amber}>~4.2% APY</Chip>
+      </div>
+    </div>
+  );
+}
+
+// ═══════ TRADE PAGE ═══════
+function TradePage({ market, strategy, onBack, w }: { market: number; strategy: string; onBack: () => void; w: ReturnType<typeof useWallet> }) {
+  const m = MARKETS[market];
+  const s = STRATEGIES.find(x => x.id === strategy)!;
   const [amt, setAmt] = useState("");
-  const w = useWallet(); const wallet = w.connected;
-  const [walletModal, setWalletModal] = useState(false);
-  const [tokenModal, setTokenModal] = useState(false);
-  const [txReview, setTxReview] = useState(false);
   const [txStatus, setTxStatus] = useState<"pending" | "success" | "error" | null>(null);
-  const [payToken, setPayToken] = useState("xSTRK");
-  const [slippage] = useState(0.5);
-  const [keepYT, setKeepYT] = useState(false);
-  const [sortBy, setSortBy] = useState<"tvl" | "fixedApy" | "longApy" | "vol24h">("tvl");
-  const [earnMode, setEarnMode] = useState(false);
-
-  const m = MARKETS[mkt];
-  const days = daysTo(m.maturity);
-
-  const out = useMemo(() => {
-    const a = parseFloat(amt); if (!a) return "0.0000";
-    return tab === "fixed" ? (a / m.ptPrice).toFixed(4) : tab === "yield" ? (a / m.ytPrice).toFixed(4) : tab === "mint" ? a.toFixed(4) : (a * 0.985).toFixed(4);
-  }, [amt, tab, m]);
-
-  const rcvToken = tab === "fixed" ? `PT-${m.sym}` : tab === "yield" ? `YT-${m.sym}` : tab === "mint" ? `PT+YT` : `LP-${m.sym}`;
-  const apy = tab === "fixed" ? m.fixedApy : tab === "yield" ? m.longApy : tab === "mint" ? 0 : 4.2;
-  const apyColor = tab === "fixed" ? "#34D399" : tab === "yield" ? "#F7931A" : "#5C94FF";
-  const priceImpact = parseFloat(amt) > 10000 ? 1.2 : parseFloat(amt) > 1000 ? 0.15 : 0.01;
+  const apyVal = strategy === "pt" ? m.fixedApy : strategy === "yt" ? m.longApy : m.underlyingApy;
+  const rcv = strategy === "pt" ? `PT-${m.sym}` : strategy === "yt" ? `YT-${m.sym}` : `PT + YT`;
+  const out = useMemo(() => { const a = parseFloat(amt); if (!a) return "0.0000"; return strategy === "pt" ? (a / m.ptPrice).toFixed(4) : strategy === "yt" ? (a / m.ytPrice).toFixed(4) : a.toFixed(4); }, [amt, strategy, m]);
+  const chartData: any[] = strategy === "pt" ? PT_DATA[market] : YIELD_DATA[market];
 
   const doTx = async () => {
-    setTxReview(false);
     setTxStatus("pending");
     try {
-      const txHash = await w.swapSYForPT(amt || "0");
-      if (txHash) setTxStatus("success");
-      else setTxStatus("error");
+      let txHash = "";
+      if (strategy === "pt") txHash = await w.swapSYForPT(amt || "0");
+      else if (strategy === "yt") txHash = await w.swapSYForPT(amt || "0");
+      else txHash = await w.split(amt || "0");
+      if (txHash) setTxStatus("success"); else setTxStatus("error");
       setAmt("");
-    } catch (e) {
-      console.error(e);
-      setTxStatus("error");
-    }
+    } catch (e) { console.error(e); setTxStatus("error"); }
   };
 
-  const sortedMarkets = [...MARKETS].sort((a, b) => (b as any)[sortBy] - (a as any)[sortBy]);
-
-  // ── RENDER ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen">
-      {/* ── NAV ── */}
-      <header className="flex items-center justify-between px-5 h-14 border-b border-primary/[0.06] sticky top-0 z-40 bg-background/95 backdrop-blur-sm">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setPage("trade")}>
-            <svg width="18" height="18" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="none" stroke="#5C94FF" strokeWidth="1.5"/><circle cx="10" cy="10" r="3" fill="#F7931A"/><line x1="10" y1="2" x2="10" y2="18" stroke="#5C94FF" strokeWidth="1" opacity="0.3"/><line x1="2" y1="10" x2="18" y2="10" stroke="#5C94FF" strokeWidth="1" opacity="0.3"/></svg>
-            <span className="text-[15px] font-bold tracking-tight">fission</span>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 20px" }}>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: C.textSec, cursor: "pointer", fontSize: 13, fontFamily: font, marginBottom: 24, fontWeight: 400 }}>← Back to strategies</button>
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+        {/* LEFT */}
+        <div style={{ flex: "1 1 500px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              {getIcon(s.id, 36)}
+              <div style={{ flex: 1 }}><div style={{ fontSize: 18, fontWeight: 700 }}>{s.title} · {m.sym}</div><div style={{ fontSize: 12, color: C.textSec, fontWeight: 300 }}>{s.subtitle} · {m.protocol}</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 9, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 500 }}>APY</div><div style={{ fontSize: 26, fontWeight: 700, fontFamily: mono, color: s.color }}>{apyVal}%</div></div>
+            </div>
+            <div style={{ fontSize: 12, color: C.textSec, lineHeight: 1.6, padding: "12px 14px", background: C.bgInput, borderRadius: 10, marginTop: 14, fontWeight: 300 }}>{s.desc}</div>
           </div>
-          <nav className="flex items-center gap-0.5 bg-secondary/50 rounded-md p-0.5">
-            {([["trade", BarChart3], ["markets", TrendingUp], ["dashboard", LayoutDashboard]] as const).map(([p, Icon]) => (
-              <button key={p} onClick={() => setPage(p as any)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${page === p ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                <Icon size={13} />{p.charAt(0).toUpperCase() + p.slice(1)}
+          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: "18px 18px 10px" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>{strategy === "pt" ? "PT Price → 1.0 at Maturity" : "Yield Rate History"}<span style={{ fontSize: 11, color: C.textDim, marginLeft: 8, fontWeight: 300 }}>60d</span></div>
+            <ResponsiveContainer width="100%" height={200}>
+              {strategy === "pt" ? (
+                <ComposedChart data={chartData}>
+                  <defs><linearGradient id="gTr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={s.color} stopOpacity={0.12} /><stop offset="100%" stopColor={s.color} stopOpacity={0} /></linearGradient></defs>
+                  <XAxis dataKey="d" tick={false} axisLine={false} tickLine={false} /><YAxis tick={{ fill: C.textDim, fontSize: 10 }} axisLine={false} tickLine={false} width={36} domain={[0.93, 1.01]} />
+                  <Tooltip content={<ChartTip />} /><Line dataKey="target" stroke={C.textDim} strokeWidth={1} strokeDasharray="4 3" dot={false} /><Area dataKey="price" stroke={s.color} fill="url(#gTr)" strokeWidth={1.5} dot={false} />
+                </ComposedChart>
+              ) : (
+                <ComposedChart data={chartData}>
+                  <defs><linearGradient id="gTu" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.blue} stopOpacity={0.12} /><stop offset="100%" stopColor={C.blue} stopOpacity={0} /></linearGradient></defs>
+                  <XAxis dataKey="d" tick={false} axisLine={false} tickLine={false} /><YAxis tick={{ fill: C.textDim, fontSize: 10 }} axisLine={false} tickLine={false} width={28} unit="%" />
+                  <Tooltip content={<ChartTip />} /><Area dataKey="underlying" name="Underlying" stroke={C.blue} fill="url(#gTu)" strokeWidth={1.5} dot={false} /><Area dataKey="implied" name="Implied" stroke={C.amber} fill="none" strokeWidth={1.5} dot={false} /><Line dataKey="fixed" name="Fixed" stroke={C.teal} strokeWidth={1} strokeDasharray="4 3" dot={false} />
+                </ComposedChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 14 }}>Market Details</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px 24px" }}>
+              {([["Underlying APY", `${m.underlyingApy}%`, C.blue], ["Implied APY", `${m.impliedApy}%`, C.amber], ["PT Price", `${m.ptPrice} SY`, C.text],
+                ["Maturity", `${m.daysLeft}d left`, C.coral], ["24h Volume", m.vol, C.text], ["Protocol", m.protocol, C.textSec],
+                ["PT Supply", m.ptSupply, C.textSec], ["YT Supply", m.ytSupply, C.textSec], ["YT Price", `${m.ytPrice} SY`, C.text]] as [string, string, string][]).map(([l, v, c], i) => (
+                <div key={i}><div style={{ fontSize: 9, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4, fontWeight: 500 }}>{l}</div><div style={{ fontSize: 13, fontWeight: 500, fontFamily: mono, color: c }}>{v}</div></div>
+              ))}
+            </div>
+          </div>
+          {w.connected && (
+            <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 14 }}>Your Positions</div>
+              {[{ token: "PT-xSTRK", amount: w.balances.PT, apy: "5.8%", color: C.teal }, { token: "YT-xSTRK", amount: w.balances.YT, apy: "14.3%", color: C.amber }, { token: "SY-xSTRK", amount: w.balances.SY, apy: "-", color: C.blue }]
+                .filter(p => p.amount !== "0" && parseFloat(p.amount) > 0).map((p, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}><div><div style={{ fontSize: 13, fontWeight: 500 }}>{p.token}</div><div style={{ fontSize: 11, color: C.textDim, fontFamily: mono }}>{p.amount}</div></div><div style={{ fontSize: 12, fontFamily: mono, color: p.color, fontWeight: 600, alignSelf: "center" }}>{p.apy}</div></div>
+                ))}
+              {parseFloat(w.balances.PT || "0") === 0 && parseFloat(w.balances.YT || "0") === 0 && parseFloat(w.balances.SY || "0") === 0 && <div style={{ fontSize: 12, color: C.textDim, textAlign: "center", padding: 16 }}>No positions yet</div>}
+            </div>
+          )}
+        </div>
+        {/* RIGHT: Trade panel */}
+        <div style={{ flex: "0 0 370px", minWidth: 320 }}>
+          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, position: "sticky", top: 80 }}>
+            <div style={{ padding: "16px 22px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+              {getIcon(s.id, 20)}<span style={{ fontSize: 14, fontWeight: 600 }}>{s.title}</span><span style={{ fontSize: 12, color: s.color, fontWeight: 600, fontFamily: mono, marginLeft: "auto" }}>{apyVal}% APY</span>
+            </div>
+            <div style={{ padding: 22 }}>
+              <div style={{ background: C.bgInput, borderRadius: 10, padding: "12px 14px", border: `1px solid ${C.border}`, marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 10, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
+                  <span>You pay</span>
+                  <span style={{ cursor: "pointer" }} onClick={() => setAmt(w.connected ? w.balances.xSTRK : "0")}>Bal: <span style={{ color: C.textSec, fontFamily: mono }}>{w.connected ? w.balances.xSTRK : "0"}</span> <span style={{ color: C.amber, fontWeight: 600 }}>MAX</span></span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00" type="number" style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 22, fontWeight: 500, fontFamily: mono }} />
+                  <div style={{ padding: "6px 12px", background: C.bg, borderRadius: 8, fontSize: 12, fontWeight: 600, color: C.textSec, border: `1px solid ${C.border}` }}>xSTRK</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}><div style={{ width: 30, height: 30, borderRadius: 8, background: C.bgInput, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: C.textDim }}>↓</div></div>
+              <div style={{ background: C.bgInput, borderRadius: 10, padding: "12px 14px", border: `1px solid ${C.border}`, marginBottom: 18 }}>
+                <div style={{ fontSize: 10, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontWeight: 500 }}>You receive</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontFamily: mono, fontSize: 22, fontWeight: 500, color: s.color }}>{out}</span>
+                  <div style={{ marginLeft: "auto", padding: "6px 12px", background: C.bg, borderRadius: 8, fontSize: 12, fontWeight: 600, color: s.color, border: `1px solid ${s.color}22` }}>{rcv}</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 12, marginBottom: 18 }}>
+                {([["APY", `${apyVal}%`, s.color], ["Price Impact", "<0.01%", C.teal], ["Route", `xSTRK → SY → ${rcv}`, C.textSec], ["Fee", "0.30%", C.textSec]] as [string, string, string][]).map(([l, v, c], i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: i < 3 ? `1px solid ${C.border}` : "none" }}>
+                    <span style={{ color: C.textDim, fontWeight: 300 }}>{l}</span><span style={{ fontFamily: mono, fontWeight: 500, color: c, fontSize: 11 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => w.connected ? doTx() : w.connect()} style={{ width: "100%", padding: "13px 0", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: font, color: !w.connected ? "#000" : (s.id === "yt" ? "#000" : "#fff"), background: !w.connected ? C.gradBtn : s.color }}>
+                {!w.connected ? "Connect Wallet" : strategy === "pt" ? "Lock Fixed Yield" : strategy === "yt" ? "Long Yield" : "Split → PT + YT"}
               </button>
-            ))}
-          </nav>
-          {/* Earn/Trade toggle */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className={earnMode ? "text-muted-foreground" : "font-medium"}>Trade</span>
-            <Switch checked={earnMode} onCheckedChange={setEarnMode} className="h-4 w-7" />
-            <span className={!earnMode ? "text-muted-foreground" : "font-medium"}>Earn</span>
+              {strategy === "split" && (
+                <div style={{ marginTop: 12, padding: "11px 14px", background: `${C.amber}06`, borderRadius: 10, border: `1px solid ${C.amber}15`, fontSize: 11, color: C.textSec, lineHeight: 1.55, fontWeight: 300 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><IconLP size={16} /><strong style={{ color: C.amber, fontWeight: 600 }}>Add LP after split</strong></div>
+                  Provide PT + SY liquidity to earn swap fees (~4.2% APY).
+                </div>
+              )}
+              <button style={{ width: "100%", marginTop: 12, padding: "11px 14px", borderRadius: 10, cursor: "pointer", background: "transparent", border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10, textAlign: "left", fontFamily: font, color: C.text }}>
+                <IconShield size={20} color={C.slate} />
+                <div><div style={{ fontSize: 11, fontWeight: 600, color: C.slate }}>Shield with Tongo</div><div style={{ fontSize: 10, color: C.textDim, fontWeight: 300 }}>Hide position · Confidential ERC20</div></div>
+              </button>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-yield" /><span className="text-[10px] text-muted-foreground">Mainnet</span></div>
-          <Button onClick={() => wallet ? w.disconnect() : setWalletModal(true)} variant={wallet ? "outline" : "default"} size="sm" className={`text-xs h-8 ${!wallet ? "bg-gradient-to-r from-indigo-600 to-purple-600 border-0" : ""}`}>
-            {wallet ? <><Wallet size={12} className="mr-1.5" />{w.shortAddress}</> : "Connect Wallet"}
-          </Button>
-        </div>
-      </header>
-
-      {/* ── TICKER BAR ── */}
-      <div className="flex gap-6 px-5 py-2 border-b border-primary/[0.04] text-xs overflow-x-auto">
-        {[["TVL", "$3.34M"], ["24h Vol", "$252K"], ["Markets", "2"], ["BTC Staked", "1,790", "#F7931A"], ["STRK Staked", "310M", "#5C94FF"]].map(([l, v, c]) => (
-          <div key={l as string} className="flex gap-1.5 items-center whitespace-nowrap">
-            <span className="text-muted-foreground">{l}</span>
-            <span className="font-mono font-medium" style={{ color: (c as string) || undefined }}>{v}</span>
-          </div>
-        ))}
-        <div className="ml-auto"><button className="p-1 hover:bg-primary/5 rounded transition-colors"><RefreshCw size={11} className="text-muted-foreground" /></button></div>
       </div>
+      {txStatus && <TxToast status={txStatus} hash={w.lastTxHash} onClose={() => setTxStatus(null)} />}
+    </div>
+  );
+}
 
-      {/* ══════ MARKETS PAGE ══════ */}
-      {page === "markets" && (
-        <div className="max-w-5xl mx-auto p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">All Markets</h2>
-            <div className="flex gap-1.5">
-              {(["tvl", "fixedApy", "longApy", "vol24h"] as const).map(s => (
-                <button key={s} onClick={() => setSortBy(s)} className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${sortBy === s ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-primary/5"}`}>
-                  {s === "tvl" ? "TVL" : s === "fixedApy" ? "Fixed APY" : s === "longApy" ? "Long Yield" : "Volume"}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="border border-primary/[0.06] rounded-lg overflow-hidden">
-            <div className="grid grid-cols-[2fr_1fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_80px] gap-2 px-4 py-2.5 text-[10px] text-muted-foreground uppercase tracking-wider border-b border-primary/[0.06] bg-secondary/30">
-              <span>Market</span><span>Fixed APY</span><span>Long Yield</span><span>Implied APY</span><span>TVL</span><span>Volume (24h)</span><span>Maturity</span>
-            </div>
-            {sortedMarkets.map(mk => (
-              <button key={mk.id} onClick={() => { setMkt(mk.id); setPage("trade"); }} className="grid grid-cols-[2fr_1fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_80px] gap-2 px-4 py-3.5 w-full text-left hover:bg-primary/[0.03] transition-all border-b border-primary/[0.04] last:border-0">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: `${mk.accent}12`, color: mk.accent }}>{mk.sym[0]}</div>
-                  <div><div className="text-sm font-medium">{mk.sym}</div><div className="text-[10px] text-muted-foreground">{mk.protocol} · {mk.name}</div></div>
-                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 ml-1" style={{ color: mk.accent, borderColor: `${mk.accent}30` }}>{mk.tag}</Badge>
-                </div>
-                <span className="text-yield font-mono text-sm font-medium self-center">{mk.fixedApy}%</span>
-                <span className="text-btc font-mono text-sm font-medium self-center">{mk.longApy}%</span>
-                <span className="font-mono text-sm self-center" style={{ color: mk.accent }}>{mk.impliedApy}%</span>
-                <span className="font-mono text-sm self-center">{fmt(mk.tvl)}</span>
-                <span className="font-mono text-sm self-center text-muted-foreground">{fmt(mk.vol24h)}</span>
-                <span className="text-xs text-coral self-center font-mono">{daysTo(mk.maturity)}d</span>
-              </button>
+// ═══════ DASHBOARD ═══════
+function DashboardPage({ w }: { w: ReturnType<typeof useWallet> }) {
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "48px 20px" }}>
+      {!w.connected ? (
+        <div style={{ textAlign: "center", padding: "80px 0" }}>
+          <IconShield size={48} color={C.textDim} />
+          <div style={{ fontSize: 20, fontWeight: 700, marginTop: 16, marginBottom: 8 }}>Connect Your Wallet</div>
+          <div style={{ fontSize: 14, color: C.textSec, marginBottom: 24, fontWeight: 300 }}>View your positions, accrued yield, and history.</div>
+          <button onClick={() => w.connect()} style={{ padding: "12px 32px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#000", background: C.gradBtn, fontFamily: font }}>Connect Wallet</button>
+        </div>
+      ) : (
+        <div>
+          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", marginBottom: 24 }}>Dashboard</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
+            {([["xSTRK Balance", w.balances.xSTRK + " xSTRK", ""], ["PT Balance", w.balances.PT + " PT", C.teal], ["YT Balance", w.balances.YT + " YT", C.amber], ["Positions", String([w.balances.PT, w.balances.YT, w.balances.SY].filter(b => b !== "0" && parseFloat(b) > 0).length), ""]] as [string, string, string][]).map(([l, v, c], i) => (
+              <div key={i} style={{ background: C.bgCard, borderRadius: 12, border: `1px solid ${C.border}`, padding: "16px 20px" }}>
+                <div style={{ fontSize: 9, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, fontWeight: 500 }}>{l}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, fontFamily: mono, color: c || C.text }}>{v}</div>
+              </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* ══════ TRADE PAGE ══════ */}
-      {page === "trade" && (
-        <div className="flex max-w-[1280px] mx-auto p-5 gap-4" style={{ flexWrap: "wrap" }}>
-          {/* LEFT COLUMN */}
-          <div className="flex-1 min-w-0 flex flex-col gap-3">
-            {/* Market selector */}
-            <div className="flex gap-px bg-primary/[0.04] rounded-lg overflow-hidden">
-              {MARKETS.map(mk => (
-                <button key={mk.id} onClick={() => setMkt(mk.id)} className={`flex-1 p-3.5 text-left transition-all ${mkt === mk.id ? "bg-card" : "bg-background hover:bg-card/50"}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-sm font-semibold ${mkt === mk.id ? "" : "text-muted-foreground"}`}>{mk.sym}</span>
-                    <Badge variant="outline" className="text-[9px] h-4 px-1.5" style={{ color: mk.accent, borderColor: `${mk.accent}30` }}>{mk.tag}</Badge>
+          <div style={{ background: C.bgCard, borderRadius: 14, border: `1px solid ${C.border}`, padding: 22 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Active Positions</div>
+            {[{ token: "PT-xSTRK", amount: w.balances.PT, apy: "5.8%", color: C.teal }, { token: "YT-xSTRK", amount: w.balances.YT, apy: "14.3%", color: C.amber }, { token: "SY-xSTRK", amount: w.balances.SY, apy: "-", color: C.blue }]
+              .filter(p => p.amount !== "0" && parseFloat(p.amount) > 0).map((p, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: `${p.color}12`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: p.color }}>{p.token.slice(0, 2)}</div>
+                    <div><div style={{ fontSize: 14, fontWeight: 500 }}>{p.token}</div><div style={{ fontSize: 11, color: C.textDim, fontFamily: mono }}>{p.amount}</div></div>
                   </div>
-                  <div className="flex gap-4">
-                    <div><div className="text-[9px] text-muted-foreground uppercase tracking-wider">Fixed</div><div className="text-yield font-mono text-sm font-semibold">{mk.fixedApy}%</div></div>
-                    <div><div className="text-[9px] text-muted-foreground uppercase tracking-wider">Long</div><div className="text-btc font-mono text-sm font-semibold">{mk.longApy}%</div></div>
-                    <div><div className="text-[9px] text-muted-foreground uppercase tracking-wider">TVL</div><div className="font-mono text-xs">{fmt(mk.tvl)}</div></div>
-                  </div>
-                </button>
+                  <div style={{ fontSize: 13, fontFamily: mono, color: p.color, fontWeight: 600, alignSelf: "center" }}>{p.apy}</div>
+                </div>
               ))}
-            </div>
-
-            {/* Chart */}
-            <div className="bg-card rounded-lg border border-primary/[0.06] p-4">
-              <div className="flex justify-between items-center mb-3">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-semibold">{m.sym}</span>
-                  <span className="text-xs text-muted-foreground">{chart === "apy" ? "Yield History" : "PT Convergence"} · 60d</span>
-                  <APYBreakdown m={m} />
-                </div>
-                <div className="flex gap-px bg-secondary/50 rounded p-0.5">
-                  {(["apy", "pt"] as const).map(c => (
-                    <button key={c} onClick={() => setChart(c)} className={`px-2.5 py-1 rounded text-[11px] font-medium transition-all ${chart === c ? "bg-primary/10 text-foreground" : "text-muted-foreground"}`}>
-                      {c === "apy" ? "APY" : "PT Price"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={190}>
-                {chart === "apy" ? (
-                  <ComposedChart data={YIELD_DATA[mkt]}>
-                    <defs>
-                      <linearGradient id="gu" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#5C94FF" stopOpacity={0.12}/><stop offset="100%" stopColor="#5C94FF" stopOpacity={0}/></linearGradient>
-                      <linearGradient id="gi" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#F7931A" stopOpacity={0.1}/><stop offset="100%" stopColor="#F7931A" stopOpacity={0}/></linearGradient>
-                    </defs>
-                    <XAxis dataKey="d" tick={false} axisLine={false} tickLine={false}/>
-                    <YAxis tick={{ fill: "#4E4E6A", fontSize: 10, fontFamily: "'IBM Plex Mono'" }} axisLine={false} tickLine={false} width={28} unit="%"/>
-                    <Tooltip content={<ChartTip/>}/>
-                    <Area dataKey="underlying" name="Underlying" stroke="#5C94FF" fill="url(#gu)" strokeWidth={1.5} dot={false}/>
-                    <Area dataKey="implied" name="Implied" stroke="#F7931A" fill="url(#gi)" strokeWidth={1.5} dot={false}/>
-                    <Line dataKey="fixed" name="Fixed" stroke="#34D399" strokeWidth={1} strokeDasharray="4 3" dot={false}/>
-                  </ComposedChart>
-                ) : (
-                  <ComposedChart data={PT_DATA[mkt]}>
-                    <defs><linearGradient id="gp" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={m.accent} stopOpacity={0.12}/><stop offset="100%" stopColor={m.accent} stopOpacity={0}/></linearGradient></defs>
-                    <XAxis dataKey="d" tick={false} axisLine={false} tickLine={false}/>
-                    <YAxis tick={{ fill: "#4E4E6A", fontSize: 10, fontFamily: "'IBM Plex Mono'" }} axisLine={false} tickLine={false} width={36} domain={[0.93, 1.01]}/>
-                    <Tooltip content={<ChartTip/>}/>
-                    <Line dataKey="target" name="Redemption" stroke="#4E4E6A" strokeWidth={1} strokeDasharray="4 3" dot={false}/>
-                    <Area dataKey="price" name="PT Price" stroke={m.accent} fill="url(#gp)" strokeWidth={1.5} dot={false}/>
-                  </ComposedChart>
-                )}
-              </ResponsiveContainer>
-              <div className="flex justify-center gap-4 pt-1">
-                {chart === "apy"
-                  ? [["Underlying", "#5C94FF"], ["Implied", "#F7931A"], ["Fixed", "#34D399"]].map(([n, c]) => (
-                    <div key={n} className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><div className="w-2.5 h-[2px] rounded-full" style={{ background: c }}/>{n}</div>))
-                  : [["PT-"+m.sym, m.accent], ["Maturity", "#4E4E6A"]].map(([n, c]) => (
-                    <div key={n} className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><div className="w-2.5 h-[2px] rounded-full" style={{ background: c }}/>{n}</div>))
-                }
-              </div>
-            </div>
-
-            {/* Market details grid */}
-            <div className="bg-card rounded-lg border border-primary/[0.06] p-4">
-              <div className="text-xs font-semibold text-muted-foreground mb-3">Market Details</div>
-              <div className="grid grid-cols-3 gap-3">
-                {[["PT Price", `${m.ptPrice} SY`, ""], ["YT Price", `${m.ytPrice} SY`, ""], ["Maturity", `${days}d left`, "#E97880"],
-                  ["Underlying APY", `${m.underlyingApy}%`, "#5C94FF"], ["Implied APY", `${m.impliedApy}%`, "#F7931A"], ["24h Volume", fmt(m.vol24h), ""],
-                  ["PT Supply", `${(m.ptSupply/1e3).toFixed(0)}K`, ""], ["YT Supply", `${(m.ytSupply/1e3).toFixed(0)}K`, ""], ["Protocol", "Endur", ""],
-                ].map(([l, v, c], i) => (
-                  <div key={i}>
-                    <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">{l}</div>
-                    <div className="text-xs font-mono font-medium" style={{ color: (c as string) || undefined }}>{v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {parseFloat(w.balances.PT || "0") === 0 && parseFloat(w.balances.YT || "0") === 0 && parseFloat(w.balances.SY || "0") === 0 && <div style={{ fontSize: 13, color: C.textDim, textAlign: "center", padding: 24 }}>No positions yet. Start trading to see your positions here.</div>}
           </div>
-
-          {/* RIGHT COLUMN: Trade Panel */}
-          <div className="w-full lg:w-[360px] min-w-0">
-            <div className="bg-card rounded-lg border border-primary/[0.06] sticky top-16">
-              {/* Trade tabs */}
-              <Tabs value={tab} onValueChange={setTab}>
-                <TabsList className="w-full grid grid-cols-2 lg:grid-cols-4 bg-transparent border-b border-primary/[0.06] rounded-none h-auto p-0">
-                  {[["fixed", "Fixed", "#34D399"], ["yield", "Long Yield", "#F7931A"], ["lp", "LP", "#5C94FF"], ["mint", "Mint", "#E97880"]].map(([id, label, color]) => (
-                    <TabsTrigger key={id} value={id} className="rounded-none border-b-2 border-transparent data-[state=active]:border-current data-[state=active]:bg-transparent py-2.5 text-xs font-semibold" style={{ color: tab === id ? color : undefined }}>
-                      {label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-
-                <div className="p-4">
-                  {/* Context banner */}
-                  <div className="text-[11px] text-muted-foreground leading-relaxed mb-3 p-2.5 bg-secondary/30 rounded-md">
-                    {tab === "fixed" && <>Buy PT-{m.sym} at {m.ptPrice} SY. Redeem 1:1 at maturity → <span className="text-yield font-semibold">{m.fixedApy}% fixed</span>.</>}
-                    {tab === "yield" && <>Buy YT-{m.sym} for leveraged yield. <span className="text-btc font-semibold">{m.longApy}% APY</span> if rates hold.</>}
-                    {tab === "lp" && <>Provide SY+PT liquidity. Earn 0.3% swap fees. Minimal IL at maturity.</>}
-                    {tab === "mint" && <>Deposit SY to mint equal PT + YT tokens. Split your yield-bearing position.</>}
-                  </div>
-
-                  {/* Pay input */}
-                  <div className="bg-[#080826] rounded-md p-3 border border-primary/[0.05] mb-1.5">
-                    <div className="flex justify-between mb-1.5">
-                      <span className="text-[9px] text-muted-foreground uppercase tracking-wider">You pay</span>
-                      <span className="text-[10px] text-muted-foreground cursor-pointer" onClick={() => setAmt(w.connected ? w.balances.xSTRK : "0")}>
-                        Bal: <span className="text-foreground/70 font-mono">{w.connected ? w.balances.xSTRK : "0"}</span> <span className="text-primary font-semibold ml-0.5">MAX</span>
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00" type="number" className="flex-1 bg-transparent border-none outline-none text-lg font-mono font-medium" />
-                      <button onClick={() => setTokenModal(true)} className="flex items-center gap-1 px-2.5 py-1.5 bg-background rounded border border-primary/[0.08] text-xs font-semibold hover:border-primary/20 transition-colors">
-                        {payToken}<ChevronDown size={12} className="text-muted-foreground" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-center py-0.5">
-                    <div className="w-6 h-6 rounded bg-[#080826] border border-primary/[0.06] flex items-center justify-center">
-                      <ArrowDown size={12} className="text-muted-foreground" />
-                    </div>
-                  </div>
-
-                  {/* Receive output */}
-                  <div className="bg-[#080826] rounded-md p-3 border border-primary/[0.05] mb-3">
-                    <span className="text-[9px] text-muted-foreground uppercase tracking-wider">You receive</span>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-lg font-mono font-medium" style={{ color: apyColor }}>{out}</span>
-                      <div className="ml-auto px-2.5 py-1.5 rounded border text-xs font-semibold" style={{ color: apyColor, borderColor: `${apyColor}25`, background: `${apyColor}08` }}>
-                        {rcvToken}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Keep YT toggle (LP tab only) */}
-                  {tab === "lp" && (
-                    <div className="flex items-center justify-between p-2.5 bg-secondary/30 rounded-md mb-3">
-                      <div><div className="text-xs font-medium">Keep YT Mode</div><div className="text-[10px] text-muted-foreground">Avoid price impact, receive YT separately</div></div>
-                      <Switch checked={keepYT} onCheckedChange={setKeepYT} />
-                    </div>
-                  )}
-
-                  {/* Rate details */}
-                  <div className="mb-3 text-xs">
-                    {[[tab === "mint" ? "Operation" : "APY", tab === "mint" ? "Split SY → PT+YT" : `${apy}%`, tab === "mint" ? "" : apyColor],
-                      ["Price Impact", `${priceImpact < 0.1 ? "<0.01" : priceImpact.toFixed(2)}%`, priceImpact > 1 ? "#F7931A" : "#34D399"],
-                      ["Min Received", `${(parseFloat(out || "0") * (1 - slippage/100)).toFixed(4)} ${rcvToken}`, ""],
-                      ["Route", `${payToken} → SY → ${rcvToken}`, ""],
-                      ["Fee", "0.30%", ""],
-                    ].map(([l, v, c], i) => (
-                      <div key={i} className="flex justify-between py-1.5 border-b border-primary/[0.04] last:border-0">
-                        <span className="text-muted-foreground">{l}</span>
-                        <span className="font-mono font-medium" style={{ color: (c as string) || undefined }}>{v}</span>
-                      </div>
-                    ))}
-                    {priceImpact > 1 && (
-                      <div className="flex items-center gap-1.5 text-[10px] text-amber-400 mt-1"><AlertTriangle size={10}/>High price impact. Consider reducing trade size.</div>
-                    )}
-                  </div>
-
-                  {/* Settings + Action */}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] text-muted-foreground">Slippage: {slippage}%</span>
-                    <SlippageSettings />
-                  </div>
-
-                  <Button onClick={() => wallet ? setTxReview(true) : setWalletModal(true)}
-                    className="w-full h-10 font-semibold text-sm text-white"
-                    style={{ background: wallet ? apyColor : undefined }}
-                    variant={wallet ? "default" : "default"}
-                  >
-                    {!wallet ? <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text">Connect Wallet</span> : tab === "fixed" ? "Lock Fixed Yield" : tab === "yield" ? "Long Yield" : tab === "mint" ? "Mint PT + YT" : "Add Liquidity"}
-                  </Button>
-
-                  {/* Tongo shield */}
-                  <button className="w-full mt-2 p-2.5 rounded-md border border-primary/[0.06] flex items-center gap-2 hover:border-primary/15 transition-colors text-left">
-                    <Shield size={14} className="text-[#303093]" />
-                    <div><div className="text-[11px] font-semibold text-[#303093]">Shield with Tongo</div><div className="text-[10px] text-muted-foreground">Hide position · Confidential ERC20</div></div>
-                  </button>
-                </div>
-              </Tabs>
-            </div>
-
-            {/* Positions (when connected) */}
-            {wallet && (
-              <div className="bg-card rounded-lg border border-primary/[0.06] mt-3 p-4">
-                <div className="text-xs font-semibold text-muted-foreground mb-2.5">Your Positions</div>
-                {[{token:"PT-xSTRK",amount:w.balances.PT,apy:"5.8%",color:"#34D399"},{token:"YT-xSTRK",amount:w.balances.YT,apy:"14.3%",color:"#F7931A"},{token:"SY-xSTRK",amount:w.balances.SY,apy:"-",color:"#5C94FF"}].filter(p=>p.amount!=="0"&&parseFloat(p.amount)>0).map((p, i) => (
-                  <div key={i} className="flex justify-between py-2 border-b border-primary/[0.04] last:border-0">
-                    <div><div className="text-xs font-medium">{p.token}</div><div className="text-[10px] text-muted-foreground font-mono">{p.amount}</div></div>
-                    <div className="text-right"><div className="text-[10px] font-mono font-medium" style={{ color: p.color }}>{p.apy}</div></div>
-                  </div>
-                ))}
-                {parseFloat(w.balances.PT||"0")===0&&parseFloat(w.balances.YT||"0")===0&&parseFloat(w.balances.SY||"0")===0&&<div className="text-xs text-muted-foreground text-center py-3">No positions yet</div>}
-                <div className="flex justify-between mt-2.5 p-2 bg-secondary/30 rounded">
-                  <span className="text-[10px] text-muted-foreground">Unclaimed Yield</span>
-                  <span className="text-xs text-yield font-mono font-semibold">{w.balances.YT} YT-xSTRK</span>
-                </div>
-                <Button variant="outline" size="sm" className="w-full mt-2 text-yield border-yield/20 hover:bg-yield/5 text-xs">Claim All Yield</Button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ══════ DASHBOARD PAGE ══════ */}
-      {page === "dashboard" && (
-        <div className="max-w-4xl mx-auto p-5">
-          {!wallet ? (
-            <div className="text-center py-20">
-              <Wallet size={32} className="mx-auto text-muted-foreground mb-3" />
-              <div className="text-lg font-semibold mb-2">Connect Your Wallet</div>
-              <div className="text-sm text-muted-foreground mb-4">View your positions, accrued yield, and transaction history.</div>
-              <Button onClick={() => setWalletModal(true)} className="bg-gradient-to-r from-indigo-600 to-purple-600">Connect Wallet</Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Dashboard</h2>
-                <div className="text-right">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Portfolio Value</div>
-                  <div className="text-2xl font-mono font-bold">-</div>
-                </div>
-              </div>
-
-              {/* Stats row */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {[["Total Deposited", w.balances.xSTRK + " xSTRK", ""], ["Unrealized PnL", w.balances.SY + " SY", "#34D399"], ["Unclaimed Yield", w.balances.YT + " YT", "#34D399"], ["Positions", String([w.balances.PT,w.balances.YT,w.balances.SY].filter(b=>b!=="0"&&parseFloat(b)>0).length), ""]].map(([l, v, c], i) => (
-                  <div key={i} className="bg-card rounded-lg border border-primary/[0.06] p-3">
-                    <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">{l}</div>
-                    <div className="text-sm font-mono font-semibold" style={{ color: (c as string) || undefined }}>{v}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Positions table */}
-              <div className="bg-card rounded-lg border border-primary/[0.06]">
-                <div className="px-4 py-3 border-b border-primary/[0.06] flex items-center justify-between">
-                  <span className="text-sm font-semibold">Active Positions</span>
-                  <Button variant="outline" size="sm" className="text-yield border-yield/20 hover:bg-yield/5 text-xs h-7">Claim All Yield</Button>
-                </div>
-                <div className="grid grid-cols-[2fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr] gap-2 px-4 py-2 text-[9px] text-muted-foreground uppercase tracking-wider border-b border-primary/[0.04]">
-                  <span>Position</span><span>Amount</span><span>APY</span><span>Market</span>
-                </div>
-                {[{token:"PT-xSTRK",amount:w.balances.PT,apy:"5.8%",color:"#34D399"},{token:"YT-xSTRK",amount:w.balances.YT,apy:"14.3%",color:"#F7931A"},{token:"SY-xSTRK",amount:w.balances.SY,apy:"-",color:"#5C94FF"}].filter(p=>p.amount!=="0"&&parseFloat(p.amount)>0).map((p, i) => (
-                  <div key={i} className="grid grid-cols-[2fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr] gap-2 px-4 py-3 border-b border-primary/[0.04] last:border-0 hover:bg-primary/[0.02] transition-colors">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold" style={{ background: `${p.color}12`, color: p.color }}>{p.token.slice(0,2)}</div>
-                      <span className="text-sm font-medium">{p.token}</span>
-                    </div>
-                    <span className="text-xs font-mono self-center">{p.amount}</span>
-                    <span className="text-xs font-mono font-medium self-center" style={{ color: p.color }}>{p.apy}</span>
-                    <span className="text-xs text-muted-foreground self-center">xSTRK</span>
-                  </div>
-                ))}
-                {parseFloat(w.balances.PT||"0")===0&&parseFloat(w.balances.YT||"0")===0&&parseFloat(w.balances.SY||"0")===0&&<div className="text-xs text-muted-foreground text-center py-6">No positions yet. Deposit xSTRK to get started.</div>}
-              </div>
-
-              {/* Claim section */}
-              <div className="bg-card rounded-lg border border-primary/[0.06] p-4">
-                <div className="text-sm font-semibold mb-3">Accrued Yield</div>
-                <div className="flex items-center justify-between p-3 bg-yield/8 border border-yield/15 rounded-lg">
-                  <div>
-                    <div className="text-xs text-muted-foreground">Claimable from YT-xSTRK</div>
-                    <div className="text-lg font-mono font-bold text-yield">{w.balances.YT} YT-xSTRK</div>
-                    <div className="text-[10px] text-muted-foreground">from on-chain</div>
-                  </div>
-                  <Button className="bg-yield hover:bg-yield/90 text-black font-semibold">Claim Yield</Button>
-                </div>
-              </div>
+          {parseFloat(w.balances.YT || "0") > 0 && (
+            <div style={{ marginTop: 16, background: `${C.teal}08`, border: `1px solid ${C.teal}22`, borderRadius: 14, padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div><div style={{ fontSize: 12, color: C.textSec, marginBottom: 4 }}>Claimable from YT-xSTRK</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: mono, color: C.teal }}>{w.balances.YT} YT-xSTRK</div></div>
+              <button onClick={() => w.claimYield()} style={{ padding: "10px 24px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#000", background: C.teal, fontFamily: font }}>Claim Yield</button>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* ── FOOTER ── */}
-      <footer className="border-t border-primary/[0.04] px-5 py-4 mt-10 flex justify-between items-center flex-wrap gap-2">
-        <span className="text-xs font-bold tracking-tight">fission</span>
-        <div className="flex gap-4 text-[11px] text-muted-foreground">
-          {["Docs", "GitHub", "Twitter", "Discord"].map(l => <a key={l} href="#" className="hover:text-foreground transition-colors">{l}</a>)}
-        </div>
-        <span className="text-[10px] text-muted-foreground">Starknet Mainnet · RE&#123;DEFINE&#125; Hackathon</span>
-      </footer>
+// ═══════ MAIN APP ═══════
+export default function App() {
+  const [page, setPage] = useState("landing");
+  const [market, setMarket] = useState(0);
+  const [strategy, setStrategy] = useState<string | null>(null);
+  const w = useWallet();
 
-      {/* ── MODALS ── */}
-      <WalletModal open={walletModal} onClose={() => setWalletModal(false)} onConnect={() => { w.connect(); setWalletModal(false); }} />
-      <TokenSelector open={tokenModal} onClose={() => setTokenModal(false)} onSelect={setPayToken} current={payToken} />
-      <TxReview open={txReview} onClose={() => setTxReview(false)} onConfirm={doTx}
-        data={{ payAmt: amt || "0", payToken, rcvAmt: out, rcvToken, apy, apyColor, priceImpact: `${priceImpact < 0.1 ? "<0.01" : priceImpact.toFixed(2)}%`, fee: "0.30%", route: `${payToken} → SY → ${rcvToken}`, minReceived: `${(parseFloat(out || "0") * (1 - slippage/100)).toFixed(4)} ${rcvToken}` }} />
-      {txStatus && <TxToast status={txStatus} hash={w.lastTxHash} onClose={() => setTxStatus(null)} />}
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font }}>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+      {page === "landing" && <LandingPage onEnter={() => setPage("markets")} />}
+
+      {page !== "landing" && (
+        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 clamp(12px,3vw,28px)", height: 56, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 40, background: `${C.bg}ee`, backdropFilter: "blur(12px)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => setPage("landing")}><FissionLogo size={20} /><span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.03em" }}>fission</span></div>
+            <nav style={{ display: "flex", gap: 2 }}>
+              {(["markets", "dashboard"] as const).map(p => (
+                <button key={p} onClick={() => setPage(p)} style={{ padding: "6px 14px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 500, fontFamily: font,
+                  background: page === p || (p === "markets" && (page === "strategy" || page === "trade")) ? C.bgHover : "transparent",
+                  color: page === p || (p === "markets" && (page === "strategy" || page === "trade")) ? C.text : C.textSec }}>{p.charAt(0).toUpperCase() + p.slice(1)}</button>
+              ))}
+            </nav>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}><div style={{ width: 5, height: 5, borderRadius: "50%", background: C.teal }} /><span style={{ fontSize: 11, color: C.textSec }}>Mainnet</span></div>
+            <button onClick={() => w.connected ? w.disconnect() : w.connect()} style={{ padding: "7px 18px", border: w.connected ? `1px solid ${C.borderHover}` : "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font, color: w.connected ? C.text : "#000", background: w.connected ? C.bgCard : C.gradBtn }}>
+              {w.loading ? "Connecting..." : w.connected ? w.shortAddress : "Connect Wallet"}
+            </button>
+          </div>
+        </header>
+      )}
+
+      {page === "markets" && <MarketsPage onSelect={id => { setMarket(id); setPage("strategy"); }} />}
+      {page === "strategy" && <StrategyPage market={market} onSelect={s => { setStrategy(s); setPage("trade"); }} onBack={() => setPage("markets")} />}
+      {page === "trade" && strategy && <TradePage market={market} strategy={strategy} onBack={() => setPage("strategy")} w={w} />}
+      {page === "dashboard" && <DashboardPage w={w} />}
     </div>
   );
 }
