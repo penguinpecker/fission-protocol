@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect } from "react";
-import { hash } from "starknet";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { hash, RpcProvider, WalletAccount } from "starknet";
 
 const RPC = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/BQZCAx-0XGUVdVEvVRi7U";
+const provider = new RpcProvider({ nodeUrl: RPC });
 
 export const ADDRS = {
   CORE: "0x05cd0b5b58bad5c15b09404797866e1fde74eea86d0b9db6f95f59c9237e45e8",
@@ -68,6 +69,8 @@ export function useWallet() {
     balances: { xSTRK: "0", STRK: "0", ETH: "0", SY: "0", PT: "0", YT: "0" },
     loading: false, lastTxHash: "",
   });
+  // WalletAccount ref — uses our Alchemy provider for reads, wallet for signing
+  const walletAccountRef = useRef<WalletAccount | null>(null);
 
   const fetchBalances = useCallback(async (addr: string) => {
     try {
@@ -82,6 +85,15 @@ export function useWallet() {
   const connectWallet = useCallback(async (sn: any) => {
     const accounts: string[] = await sn.request({ type: "wallet_requestAccounts" });
     const addr = accounts[0] || "";
+    // Create WalletAccount: reads via Alchemy, signs via Braavos/ArgentX
+    try {
+      const wa = await WalletAccount.connect(provider, sn);
+      walletAccountRef.current = wa;
+      console.log("WalletAccount created:", wa.address);
+    } catch (e) {
+      console.warn("WalletAccount.connect failed, will try direct:", e);
+      walletAccountRef.current = null;
+    }
     setState(s => ({ ...s, address: addr, shortAddress: shortAddr(addr), connected: true, starknet: sn, loading: false }));
     if (addr) fetchBalances(addr);
   }, [fetchBalances]);
@@ -97,6 +109,7 @@ export function useWallet() {
   }, [connectWallet]);
 
   const doDisconnect = useCallback(async () => {
+    walletAccountRef.current = null;
     try { const gsn = await import("get-starknet"); await gsn.disconnect({ clearLastWallet: true }); } catch {}
     setState({ address: "", shortAddress: "", connected: false, starknet: null, balances: { xSTRK: "0", STRK: "0", ETH: "0", SY: "0", PT: "0", YT: "0" }, loading: false, lastTxHash: "" });
   }, []);
@@ -119,48 +132,34 @@ export function useWallet() {
     return () => clearInterval(id);
   }, [state.connected, state.address, fetchBalances]);
 
-  // ── TRANSACTION: uses wallet_addInvokeTransaction (SNIP wallet API) ──
-  // This is the ONLY correct way to send txs through Braavos/ArgentX.
-  // Does NOT use account.execute() which requires provider and breaks.
+  // ── TRANSACTION via WalletAccount.execute ──
+  // WalletAccount uses our Alchemy RPC for fee estimation (no OnFinality 429)
+  // and delegates signing to Braavos/ArgentX via wallet API
   const sendTx = useCallback(async (calls: { contractAddress: string; entrypoint: string; calldata: string[] }[]): Promise<string> => {
-    if (!state.starknet) throw new Error("Not connected");
+    const wa = walletAccountRef.current;
+    if (!wa) throw new Error("WalletAccount not initialized — reconnect wallet");
 
-    // SNIP wallet API format
-    const snipCalls = calls.map(c => ({
-      contract_address: c.contractAddress,
+    const formatted = calls.map(c => ({
+      contractAddress: c.contractAddress,
       entrypoint: c.entrypoint,
       calldata: c.calldata,
     }));
 
-    console.log("Sending tx with calls:", JSON.stringify(snipCalls, null, 2));
-
-    const result: any = await state.starknet.request({
-      type: "wallet_addInvokeTransaction",
-      params: { calls: snipCalls },
-    });
-
-    const txHash = result?.transaction_hash || (typeof result === "string" ? result : "");
-    console.log("Tx result:", result, "hash:", txHash);
+    console.log("WalletAccount.execute calls:", JSON.stringify(formatted, null, 2));
+    const result = await wa.execute(formatted);
+    const txHash = result?.transaction_hash || "";
+    console.log("Tx hash:", txHash);
 
     if (txHash) {
       setState(s => ({ ...s, lastTxHash: txHash }));
       setTimeout(() => fetchBalances(state.address), 8000);
     }
     return txHash;
-  }, [state.starknet, state.address, fetchBalances]);
+  }, [state.address, fetchBalances]);
 
   // ── Convenience methods ──
 
-  // Deposit xSTRK → SY (approve xSTRK then deposit)
-  const depositToSY = useCallback(async (amount: string) => {
-    const u = toU256Calldata(amount);
-    return sendTx([
-      { contractAddress: ADDRS.XSTRK, entrypoint: "approve", calldata: [ADDRS.SY, ...u] },
-      { contractAddress: ADDRS.SY, entrypoint: "deposit", calldata: u },
-    ]);
-  }, [sendTx]);
-
-  // Full flow: xSTRK → deposit SY → split PT+YT (atomic 4-call multicall)
+  // xSTRK → deposit SY → split PT+YT (4-call atomic multicall)
   const depositAndSplit = useCallback(async (amount: string) => {
     const u = toU256Calldata(amount);
     return sendTx([
@@ -171,7 +170,29 @@ export function useWallet() {
     ]);
   }, [sendTx]);
 
-  // Split SY → PT + YT (requires SY balance)
+  // STRK → stake via Endur → deposit SY → split PT+YT (6-call)
+  const stakeAndSplit = useCallback(async (amount: string) => {
+    const u = toU256Calldata(amount);
+    return sendTx([
+      { contractAddress: ADDRS.STRK, entrypoint: "approve", calldata: [ADDRS.XSTRK, ...u] },
+      { contractAddress: ADDRS.XSTRK, entrypoint: "deposit", calldata: [...u, state.address] },
+      { contractAddress: ADDRS.XSTRK, entrypoint: "approve", calldata: [ADDRS.SY, ...u] },
+      { contractAddress: ADDRS.SY, entrypoint: "deposit", calldata: u },
+      { contractAddress: ADDRS.SY, entrypoint: "approve", calldata: [ADDRS.CORE, ...u] },
+      { contractAddress: ADDRS.CORE, entrypoint: "split", calldata: ["0x0", ...u] },
+    ]);
+  }, [sendTx, state.address]);
+
+  // Deposit xSTRK → SY only
+  const depositToSY = useCallback(async (amount: string) => {
+    const u = toU256Calldata(amount);
+    return sendTx([
+      { contractAddress: ADDRS.XSTRK, entrypoint: "approve", calldata: [ADDRS.SY, ...u] },
+      { contractAddress: ADDRS.SY, entrypoint: "deposit", calldata: u },
+    ]);
+  }, [sendTx]);
+
+  // Split SY → PT + YT
   const split = useCallback(async (amount: string) => {
     const u = toU256Calldata(amount);
     return sendTx([
@@ -180,7 +201,7 @@ export function useWallet() {
     ]);
   }, [sendTx]);
 
-  // Swap SY → PT via AMM (requires SY balance + AMM liquidity)
+  // Swap SY → PT via AMM
   const swapSYForPT = useCallback(async (amount: string) => {
     const u = toU256Calldata(amount);
     return sendTx([
@@ -198,6 +219,6 @@ export function useWallet() {
 
   return {
     ...state, connect: doConnect, disconnect: doDisconnect, fetchBalances,
-    sendTx, depositToSY, depositAndSplit, split, swapSYForPT, claimYield,
+    sendTx, stakeAndSplit, depositAndSplit, depositToSY, split, swapSYForPT, claimYield,
   };
 }

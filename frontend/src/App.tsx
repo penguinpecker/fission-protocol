@@ -317,12 +317,14 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
   const m = MARKETS[market];
   const s = STRATEGIES.find(x => x.id === strategy)!;
   const [amt, setAmt] = useState("");
+  const [payToken, setPayToken] = useState<"STRK" | "xSTRK">("STRK");
   const [txStatus, setTxStatus] = useState<"pending" | "success" | "error" | null>(null);
   const [txError, setTxError] = useState("");
   const apyVal = strategy === "pt" ? m.fixedApy : strategy === "yt" ? m.longApy : m.underlyingApy;
   const rcv = `PT + YT`;
   const out = useMemo(() => { const a = parseFloat(amt); if (!a) return "0.0000"; return a.toFixed(4); }, [amt]);
   const chartData: any[] = strategy === "pt" ? PT_DATA[market] : YIELD_DATA[market];
+  const payBal = payToken === "STRK" ? w.balances.STRK : w.balances.xSTRK;
 
   const doTx = async () => {
     if (!amt || parseFloat(amt) <= 0) return;
@@ -330,20 +332,25 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
     setTxStatus("pending");
     setTxError("");
     try {
-      // All strategies: xSTRK → approve → SY deposit → approve SY → split PT+YT
-      // Single atomic multicall (4 contract calls in 1 tx)
-      const txHash = await w.depositAndSplit(amt);
+      let txHash = "";
+      if (payToken === "STRK") {
+        txHash = await w.stakeAndSplit(amt);
+      } else {
+        txHash = await w.depositAndSplit(amt);
+      }
       if (txHash) { setTxStatus("success"); setAmt(""); }
       else setTxStatus("error");
     } catch (e: any) {
       console.error("Transaction error:", e);
       const msg = e?.message || String(e);
-      if (msg.includes("Execute failed")) {
-        setTxError("Transaction failed. Check your xSTRK balance and try a smaller amount.");
+      if (msg.includes("Execute failed") || msg.includes("execution_error")) {
+        setTxError(`Transaction failed. Check your ${payToken} balance and try a smaller amount.`);
       } else if (msg.includes("rejected") || msg.includes("abort") || msg.includes("cancel")) {
         setTxError("Transaction was rejected in wallet.");
       } else if (msg.includes("low bal") || msg.includes("insufficient")) {
-        setTxError("Insufficient xSTRK balance.");
+        setTxError(`Insufficient ${payToken} balance.`);
+      } else if (msg.includes("not initialized")) {
+        setTxError("Wallet not connected. Please disconnect and reconnect.");
       } else {
         setTxError(msg.length > 150 ? msg.slice(0, 150) + "..." : msg);
       }
@@ -414,11 +421,11 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
               <div style={{ background: C.bgInput, borderRadius: 10, padding: "12px 14px", border: `1px solid ${C.border}`, marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 10, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>
                   <span>You pay</span>
-                  <span style={{ cursor: "pointer" }} onClick={() => setAmt(w.connected ? w.balances.xSTRK : "0")}>Bal: <span style={{ color: C.textSec, fontFamily: mono }}>{w.connected ? w.balances.xSTRK : "0"}</span> <span style={{ color: C.amber, fontWeight: 600 }}>MAX</span></span>
+                  <span style={{ cursor: "pointer" }} onClick={() => setAmt(w.connected ? payBal : "0")}>Bal: <span style={{ color: C.textSec, fontFamily: mono }}>{w.connected ? payBal : "0"}</span> <span style={{ color: C.amber, fontWeight: 600 }}>MAX</span></span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <input value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00" type="number" style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 22, fontWeight: 500, fontFamily: mono }} />
-                  <div style={{ padding: "6px 12px", background: C.bg, borderRadius: 8, fontSize: 12, fontWeight: 600, color: C.textSec, border: `1px solid ${C.border}` }}>xSTRK</div>
+                  <div onClick={() => setPayToken(payToken === "STRK" ? "xSTRK" : "STRK")} style={{ padding: "6px 12px", background: C.bg, borderRadius: 8, fontSize: 12, fontWeight: 600, color: payToken === "STRK" ? C.amber : C.teal, border: `1px solid ${C.border}`, cursor: "pointer", userSelect: "none" }}>{payToken} ↕</div>
                 </div>
               </div>
               <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}><div style={{ width: 30, height: 30, borderRadius: 8, background: C.bgInput, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: C.textDim }}>↓</div></div>
@@ -430,7 +437,7 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
                 </div>
               </div>
               <div style={{ fontSize: 12, marginBottom: 18 }}>
-                {([["APY", `${apyVal}%`, s.color], ["Price Impact", "<0.01%", C.teal], ["Route", "xSTRK → SY → Split → PT + YT", C.textSec], ["Fee", "0.30%", C.textSec]] as [string, string, string][]).map(([l, v, c], i) => (
+                {([["APY", `${apyVal}%`, s.color], ["Price Impact", "<0.01%", C.teal], ["Route", payToken === "STRK" ? "STRK → xSTRK → SY → PT + YT" : "xSTRK → SY → PT + YT", C.textSec], ["Fee", "0.30%", C.textSec]] as [string, string, string][]).map(([l, v, c], i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: i < 3 ? `1px solid ${C.border}` : "none" }}>
                     <span style={{ color: C.textDim, fontWeight: 300 }}>{l}</span><span style={{ fontFamily: mono, fontWeight: 500, color: c, fontSize: 11 }}>{v}</span>
                   </div>
@@ -441,9 +448,9 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
               </button>
               {w.connected && market === 0 && (
                 <div style={{ marginTop: 10, padding: "9px 12px", background: `${C.teal}06`, borderRadius: 8, border: `1px solid ${C.teal}12`, fontSize: 10, color: C.textSec, lineHeight: 1.5, fontWeight: 300 }}>
-                  {strategy === "pt" ? "Deposits xSTRK → wraps to SY → splits into PT + YT. You receive PT (fixed yield) + YT (variable yield)."
-                    : strategy === "yt" ? "Deposits xSTRK → wraps to SY → splits into PT + YT. You receive YT (leveraged yield exposure) + PT (sell for instant profit)."
-                    : "Deposits xSTRK → wraps to SY → splits into PT + YT. You receive both tokens to provide LP or trade."}
+                  {payToken === "STRK"
+                    ? `Stakes STRK via Endur → xSTRK → wraps to SY → splits into PT + YT. ${strategy === "pt" ? "You receive PT (fixed yield) + YT." : strategy === "yt" ? "You receive YT (leveraged yield) + PT." : "You receive both to LP or trade."}`
+                    : `Deposits xSTRK → wraps to SY → splits into PT + YT. ${strategy === "pt" ? "You receive PT (fixed yield) + YT." : strategy === "yt" ? "You receive YT (leveraged yield) + PT." : "You receive both to LP or trade."}`}
                 </div>
               )}
               {strategy === "split" && (
