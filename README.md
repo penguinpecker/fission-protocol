@@ -1,6 +1,5 @@
 <div align="center">
 
-<img src="./logo.png" alt="Fission Protocol" width="120" />
 
 # Fission Protocol
 
