@@ -163,7 +163,6 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
           <p style={{ fontSize: "clamp(14px,2vw,17px)", color: C.textSec, lineHeight: 1.7, maxWidth: 560, margin: "0 auto 36px", fontWeight: 300 }}>Fission tokenizes yield-bearing BTC and STRK into tradeable Principal Tokens and Yield Tokens. Lock fixed rates, speculate on yields, or earn LP fees.</p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <button onClick={onEnter} style={{ padding: "13px 36px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#000", background: C.gradBtn, fontFamily: font }}>Start Trading</button>
-            <button style={{ padding: "13px 36px", borderRadius: 10, cursor: "pointer", fontSize: 15, fontWeight: 400, color: C.textSec, background: "transparent", border: `1px solid ${C.border}`, fontFamily: font }}>Read Docs</button>
           </div>
           <div style={{ display: "flex", justifyContent: "center", gap: "clamp(24px,4vw,56px)", marginTop: 72, paddingTop: 36, borderTop: `1px solid ${C.border}`, flexWrap: "wrap" }}>
             {[["$3.34M", "Total Value Locked"], ["2", "Active Markets"], ["Jun 2026", "Next Maturity"], ["Starknet", "Network"]].map(([v, l]) => (
@@ -602,11 +601,11 @@ function SwapPage({ w }: { w: ReturnType<typeof useWallet> }) {
   };
 
   return (
-    <div style={{ maxWidth: 460, margin: "0 auto", padding: "48px 20px" }}>
+    <div style={{ maxWidth: 460, margin: "0 auto", padding: "48px 20px", boxSizing: "border-box" as const }}>
       <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", marginBottom: 8 }}>Swap</h2>
       <p style={{ fontSize: 13, color: C.textSec, fontWeight: 300, marginBottom: 28 }}>Trade yield tokens on Fission AMM</p>
 
-      <div style={{ background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, padding: 24 }}>
+      <div style={{ background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, padding: 24, overflow: "hidden" }}>
         {/* From */}
         <div style={{ background: C.bgInput, borderRadius: 12, padding: "16px 18px", border: `1px solid ${C.border}`, marginBottom: 4 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 11, color: C.textDim, fontWeight: 400 }}>
@@ -614,8 +613,8 @@ function SwapPage({ w }: { w: ReturnType<typeof useWallet> }) {
             <span style={{ cursor: "pointer" }} onClick={() => setAmt(fromBal)}>Balance: <span style={{ fontFamily: mono, color: C.textSec }}>{w.connected ? fromBal : "—"}</span> <span style={{ color: C.amber, fontWeight: 600 }}>MAX</span></span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <input value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00" type="number" style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 28, fontWeight: 500, fontFamily: mono }} />
-            <select value={from} onChange={e => setFrom(e.target.value)} style={{ padding: "8px 14px", background: C.bg, borderRadius: 10, fontSize: 13, fontWeight: 600, color: SWAP_COLORS[from], border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: font, appearance: "none" }}>
+            <input value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00" type="number" style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 26, fontWeight: 500, fontFamily: mono }} />
+            <select value={from} onChange={e => setFrom(e.target.value)} style={{ padding: "8px 12px", background: C.bg, borderRadius: 10, fontSize: 12, fontWeight: 600, color: SWAP_COLORS[from], border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: font, flexShrink: 0 }}>
               {SWAP_TOKENS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
@@ -632,8 +631,8 @@ function SwapPage({ w }: { w: ReturnType<typeof useWallet> }) {
         <div style={{ background: C.bgInput, borderRadius: 12, padding: "16px 18px", border: `1px solid ${C.border}`, marginBottom: 20 }}>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 10, fontWeight: 400 }}>You receive</div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ flex: 1, fontFamily: mono, fontSize: 28, fontWeight: 500, color: SWAP_COLORS[to] }}>{outAmt}</span>
-            <select value={to} onChange={e => setTo(e.target.value)} style={{ padding: "8px 14px", background: C.bg, borderRadius: 10, fontSize: 13, fontWeight: 600, color: SWAP_COLORS[to], border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: font, appearance: "none" }}>
+            <span style={{ flex: 1, minWidth: 0, fontFamily: mono, fontSize: 26, fontWeight: 500, color: SWAP_COLORS[to] }}>{outAmt}</span>
+            <select value={to} onChange={e => setTo(e.target.value)} style={{ padding: "8px 12px", background: C.bg, borderRadius: 10, fontSize: 12, fontWeight: 600, color: SWAP_COLORS[to], border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: font, flexShrink: 0 }}>
               {SWAP_TOKENS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
@@ -650,8 +649,8 @@ function SwapPage({ w }: { w: ReturnType<typeof useWallet> }) {
         </div>
 
         {/* Action */}
-        <button onClick={() => w.connected ? doSwap() : w.connect()} style={{ width: "100%", padding: "15px 0", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, fontFamily: font, color: "#000", background: !w.connected ? C.gradBtn : `linear-gradient(135deg, ${SWAP_COLORS[from]}, ${SWAP_COLORS[to]})` }}>
-          {!w.connected ? "Connect Wallet" : `Swap ${from} → ${to}`}
+        <button onClick={() => w.connected ? doSwap() : w.connect()} style={{ width: "100%", padding: "15px 0", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: font, color: "#000", background: !w.connected ? C.gradBtn : `linear-gradient(135deg, ${SWAP_COLORS[from]}, ${SWAP_COLORS[to]})`, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
+          {!w.connected ? "Connect Wallet" : `Swap ${from.replace("-xSTRK","")} → ${to.replace("-xSTRK","")}`}
         </button>
       </div>
 
