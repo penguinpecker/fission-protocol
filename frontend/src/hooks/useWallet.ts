@@ -47,7 +47,7 @@ function fmt(raw: bigint, dec = 18, dp = 4): string {
 
 function shortAddr(a: string) { return a ? a.slice(0, 6) + "..." + a.slice(-4) : ""; }
 
-function toU256Calldata(amount: string, decimals = 18): string[] {
+export function toU256Calldata(amount: string, decimals = 18): string[] {
   const parts = amount.split(".");
   const whole = parts[0] || "0";
   const frac = (parts[1] || "").padEnd(decimals, "0").slice(0, decimals);

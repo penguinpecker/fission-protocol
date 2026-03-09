@@ -95,13 +95,20 @@ pub mod StandardizedYield {
         }
         fn exchange_rate(self: @ContractState) -> u256 {
             let ts = self.total_supply.read();
-            if ts == 0 { 1_000_000_000_000_000_000 }
-            else { (self.total_underlying.read() * 1_000_000_000_000_000_000) / ts }
+            if ts == 0 { return 1_000_000_000_000_000_000; }
+            // Read real STRK value of xSTRK held by this contract via ERC4626
+            let vault = IERC4626Dispatcher { contract_address: self.underlying.read() };
+            let xstrk_held = ITokenDispatcher { contract_address: self.underlying.read() }.balance_of(get_contract_address());
+            let strk_value = vault.convert_to_assets(xstrk_held);
+            (strk_value * 1_000_000_000_000_000_000) / ts
         }
         fn get_underlying(self: @ContractState) -> ContractAddress { self.underlying.read() }
         fn sync(ref self: ContractState) {
-            let ul = ITokenDispatcher { contract_address: self.underlying.read() };
-            self.total_underlying.write(ul.balance_of(get_contract_address()));
+            // Update total_underlying to reflect real STRK value via ERC4626
+            let vault = IERC4626Dispatcher { contract_address: self.underlying.read() };
+            let xstrk_held = ITokenDispatcher { contract_address: self.underlying.read() }.balance_of(get_contract_address());
+            let strk_value = vault.convert_to_assets(xstrk_held);
+            self.total_underlying.write(strk_value);
         }
     }
 
@@ -110,5 +117,10 @@ pub mod StandardizedYield {
         fn transfer(ref self: T, to: ContractAddress, amount: u256) -> bool;
         fn transfer_from(ref self: T, from: ContractAddress, to: ContractAddress, amount: u256) -> bool;
         fn balance_of(self: @T, account: ContractAddress) -> u256;
+    }
+
+    #[starknet::interface]
+    trait IERC4626<T> {
+        fn convert_to_assets(self: @T, shares: u256) -> u256;
     }
 }

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ComposedChart, Line } from "recharts";
-import { useWallet } from "./hooks/useWallet";
+import { useWallet, ADDRS, toU256Calldata } from "./hooks/useWallet";
 
 /* ═══════════════════════════════════════════════════════════
    FISSION PROTOCOL v2 — Full Redesign
@@ -476,6 +476,190 @@ function TradePage({ market, strategy, onBack, w }: { market: number; strategy: 
   );
 }
 
+// ═══════ SWAP PAGE ═══════
+const SWAP_TOKENS = ["STRK", "xSTRK", "SY-xSTRK", "PT-xSTRK", "YT-xSTRK"] as const;
+const SWAP_COLORS: Record<string, string> = { "STRK": C.amber, "xSTRK": C.teal, "SY-xSTRK": C.blue, "PT-xSTRK": C.teal, "YT-xSTRK": C.amber };
+
+function SwapPage({ w }: { w: ReturnType<typeof useWallet> }) {
+  const [from, setFrom] = useState("PT-xSTRK");
+  const [to, setTo] = useState("SY-xSTRK");
+  const [amt, setAmt] = useState("");
+  const [txStatus, setTxStatus] = useState<"pending" | "success" | "error" | null>(null);
+  const [txError, setTxError] = useState("");
+
+  const balMap: Record<string, string> = { "STRK": w.balances.STRK, "xSTRK": w.balances.xSTRK, "SY-xSTRK": w.balances.SY, "PT-xSTRK": w.balances.PT, "YT-xSTRK": w.balances.YT };
+  const fromBal = balMap[from] || "0";
+  const pair = `${from}→${to}`;
+  const rates: Record<string, number> = {
+    "PT-xSTRK→SY-xSTRK": 0.982, "SY-xSTRK→PT-xSTRK": 1.018,
+    "PT-xSTRK→xSTRK": 0.982, "xSTRK→PT-xSTRK": 1.018,
+    "xSTRK→SY-xSTRK": 1.0, "SY-xSTRK→xSTRK": 1.0,
+    "STRK→xSTRK": 0.879, "STRK→SY-xSTRK": 0.879, "STRK→PT-xSTRK": 0.896,
+  };
+  const rate = rates[pair] || 1.0;
+  const outAmt = amt ? (parseFloat(amt) * rate).toFixed(4) : "0.0000";
+
+  const flip = () => { const t = from; setFrom(to); setTo(t); };
+
+  const routes: Record<string, string> = {
+    "PT-xSTRK→SY-xSTRK": "PT → AMM → SY",
+    "SY-xSTRK→PT-xSTRK": "SY → AMM → PT",
+    "PT-xSTRK→xSTRK": "PT → AMM → SY → unwrap",
+    "xSTRK→PT-xSTRK": "xSTRK → SY → AMM → PT",
+    "xSTRK→SY-xSTRK": "xSTRK → wrap → SY",
+    "SY-xSTRK→xSTRK": "SY → unwrap → xSTRK",
+    "STRK→xSTRK": "STRK → Endur stake → xSTRK",
+    "STRK→SY-xSTRK": "STRK → Endur → xSTRK → SY",
+    "STRK→PT-xSTRK": "STRK → Endur → xSTRK → SY → AMM → PT",
+  };
+  const route = routes[pair] || `${from} → ${to}`;
+
+  const doSwap = async () => {
+    if (!amt || parseFloat(amt) <= 0) return;
+    setTxStatus("pending"); setTxError("");
+    try {
+      const u = toU256Calldata(amt);
+      let txHash = "";
+      const pair = `${from}→${to}`;
+
+      if (pair === "PT-xSTRK→SY-xSTRK") {
+        // Sell PT for SY via AMM
+        txHash = await w.sendTx([
+          { contractAddress: ADDRS.PT, entrypoint: "approve", calldata: [ADDRS.AMM, ...u] },
+          { contractAddress: ADDRS.AMM, entrypoint: "swap_pt_for_sy", calldata: ["0x0", ...u, "0x0", "0x0"] },
+        ]);
+      } else if (pair === "SY-xSTRK→PT-xSTRK") {
+        // Buy PT with SY via AMM
+        txHash = await w.sendTx([
+          { contractAddress: ADDRS.SY, entrypoint: "approve", calldata: [ADDRS.AMM, ...u] },
+          { contractAddress: ADDRS.AMM, entrypoint: "swap_sy_for_pt", calldata: ["0x0", ...u, "0x0", "0x0"] },
+        ]);
+      } else if (pair === "xSTRK→SY-xSTRK") {
+        // Wrap xSTRK → SY
+        txHash = await w.sendTx([
+          { contractAddress: ADDRS.XSTRK, entrypoint: "approve", calldata: [ADDRS.SY, ...u] },
+          { contractAddress: ADDRS.SY, entrypoint: "deposit", calldata: u },
+        ]);
+      } else if (pair === "SY-xSTRK→xSTRK") {
+        // Unwrap SY → xSTRK
+        txHash = await w.sendTx([
+          { contractAddress: ADDRS.SY, entrypoint: "redeem", calldata: u },
+        ]);
+      } else if (pair === "PT-xSTRK→xSTRK") {
+        // Sell PT → SY on AMM, then unwrap SY → xSTRK
+        txHash = await w.sendTx([
+          { contractAddress: ADDRS.PT, entrypoint: "approve", calldata: [ADDRS.AMM, ...u] },
+          { contractAddress: ADDRS.AMM, entrypoint: "swap_pt_for_sy", calldata: ["0x0", ...u, "0x0", "0x0"] },
+          // Note: SY received stays in wallet — user can unwrap separately
+        ]);
+      } else if (pair === "xSTRK→PT-xSTRK") {
+        // Wrap xSTRK → SY, then buy PT on AMM
+        txHash = await w.sendTx([
+          { contractAddress: ADDRS.XSTRK, entrypoint: "approve", calldata: [ADDRS.SY, ...u] },
+          { contractAddress: ADDRS.SY, entrypoint: "deposit", calldata: u },
+          { contractAddress: ADDRS.SY, entrypoint: "approve", calldata: [ADDRS.AMM, ...u] },
+          { contractAddress: ADDRS.AMM, entrypoint: "swap_sy_for_pt", calldata: ["0x0", ...u, "0x0", "0x0"] },
+        ]);
+      } else if (pair === "STRK→PT-xSTRK") {
+        // Full: STRK → stake → xSTRK → SY → buy PT
+        txHash = await w.sendTx([
+          { contractAddress: ADDRS.STRK, entrypoint: "approve", calldata: [ADDRS.XSTRK, ...u] },
+          { contractAddress: ADDRS.XSTRK, entrypoint: "deposit", calldata: [...u, w.address] },
+          { contractAddress: ADDRS.XSTRK, entrypoint: "approve", calldata: [ADDRS.SY, ...u] },
+          { contractAddress: ADDRS.SY, entrypoint: "deposit", calldata: u },
+          { contractAddress: ADDRS.SY, entrypoint: "approve", calldata: [ADDRS.AMM, ...u] },
+          { contractAddress: ADDRS.AMM, entrypoint: "swap_sy_for_pt", calldata: ["0x0", ...u, "0x0", "0x0"] },
+        ]);
+      } else if (pair === "STRK→SY-xSTRK") {
+        // STRK → stake → xSTRK → SY
+        txHash = await w.sendTx([
+          { contractAddress: ADDRS.STRK, entrypoint: "approve", calldata: [ADDRS.XSTRK, ...u] },
+          { contractAddress: ADDRS.XSTRK, entrypoint: "deposit", calldata: [...u, w.address] },
+          { contractAddress: ADDRS.XSTRK, entrypoint: "approve", calldata: [ADDRS.SY, ...u] },
+          { contractAddress: ADDRS.SY, entrypoint: "deposit", calldata: u },
+        ]);
+      } else if (pair === "STRK→xSTRK") {
+        // Stake STRK via Endur
+        txHash = await w.sendTx([
+          { contractAddress: ADDRS.STRK, entrypoint: "approve", calldata: [ADDRS.XSTRK, ...u] },
+          { contractAddress: ADDRS.XSTRK, entrypoint: "deposit", calldata: [...u, w.address] },
+        ]);
+      } else {
+        setTxError(`${from} → ${to} is not supported yet.`);
+        setTxStatus("error"); return;
+      }
+      if (txHash) { setTxStatus("success"); setAmt(""); }
+      else setTxStatus("error");
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      if (msg.includes("Execute failed") || msg.includes("execution_error")) {
+        setTxError("Swap failed — AMM may need liquidity or insufficient balance.");
+      } else {
+        setTxError(msg.length > 150 ? msg.slice(0, 150) + "..." : msg);
+      }
+      setTxStatus("error");
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 460, margin: "0 auto", padding: "48px 20px" }}>
+      <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", marginBottom: 8 }}>Swap</h2>
+      <p style={{ fontSize: 13, color: C.textSec, fontWeight: 300, marginBottom: 28 }}>Trade yield tokens on Fission AMM</p>
+
+      <div style={{ background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, padding: 24 }}>
+        {/* From */}
+        <div style={{ background: C.bgInput, borderRadius: 12, padding: "16px 18px", border: `1px solid ${C.border}`, marginBottom: 4 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 11, color: C.textDim, fontWeight: 400 }}>
+            <span>You sell</span>
+            <span style={{ cursor: "pointer" }} onClick={() => setAmt(fromBal)}>Balance: <span style={{ fontFamily: mono, color: C.textSec }}>{w.connected ? fromBal : "—"}</span> <span style={{ color: C.amber, fontWeight: 600 }}>MAX</span></span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <input value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00" type="number" style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 28, fontWeight: 500, fontFamily: mono }} />
+            <select value={from} onChange={e => setFrom(e.target.value)} style={{ padding: "8px 14px", background: C.bg, borderRadius: 10, fontSize: 13, fontWeight: 600, color: SWAP_COLORS[from], border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: font, appearance: "none" }}>
+              {SWAP_TOKENS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Flip */}
+        <div style={{ display: "flex", justifyContent: "center", margin: "-6px 0" }}>
+          <button onClick={flip} style={{ width: 36, height: 36, borderRadius: 10, background: C.bgCard, border: `1px solid ${C.border}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: C.textSec, zIndex: 2, transition: "all 0.2s" }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = C.amber)}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = C.border)}>↕</button>
+        </div>
+
+        {/* To */}
+        <div style={{ background: C.bgInput, borderRadius: 12, padding: "16px 18px", border: `1px solid ${C.border}`, marginBottom: 20 }}>
+          <div style={{ fontSize: 11, color: C.textDim, marginBottom: 10, fontWeight: 400 }}>You receive</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ flex: 1, fontFamily: mono, fontSize: 28, fontWeight: 500, color: SWAP_COLORS[to] }}>{outAmt}</span>
+            <select value={to} onChange={e => setTo(e.target.value)} style={{ padding: "8px 14px", background: C.bg, borderRadius: 10, fontSize: 13, fontWeight: 600, color: SWAP_COLORS[to], border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: font, appearance: "none" }}>
+              {SWAP_TOKENS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Details */}
+        <div style={{ fontSize: 12, marginBottom: 20 }}>
+          {([["Rate", `1 ${from.split("-")[0]} ≈ ${rate.toFixed(4)} ${to.split("-")[0]}`], ["Price Impact", "<0.01%"], ["Route", route], ["Fee", "0.30%"]] as [string, string][]).map(([l, v], i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: i < 3 ? `1px solid ${C.border}` : "none" }}>
+              <span style={{ color: C.textDim, fontWeight: 300 }}>{l}</span>
+              <span style={{ fontFamily: mono, fontWeight: 500, color: C.textSec, fontSize: 11 }}>{v}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Action */}
+        <button onClick={() => w.connected ? doSwap() : w.connect()} style={{ width: "100%", padding: "15px 0", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, fontFamily: font, color: "#000", background: !w.connected ? C.gradBtn : `linear-gradient(135deg, ${SWAP_COLORS[from]}, ${SWAP_COLORS[to]})` }}>
+          {!w.connected ? "Connect Wallet" : `Swap ${from} → ${to}`}
+        </button>
+      </div>
+
+      {txStatus && <TxToast status={txStatus} hash={w.lastTxHash} errorMsg={txError} onClose={() => { setTxStatus(null); setTxError(""); }} />}
+    </div>
+  );
+}
+
 // ═══════ DASHBOARD ═══════
 function DashboardPage({ w }: { w: ReturnType<typeof useWallet> }) {
   return (
@@ -575,7 +759,7 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => { _setPage("landing"); setHash("landing"); }}><FissionLogo size={20} /><span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.03em" }}>fission</span></div>
             <nav style={{ display: "flex", gap: 2 }}>
-              {(["markets", "dashboard"] as const).map(p => (
+              {(["markets", "swap", "dashboard"] as const).map(p => (
                 <button key={p} onClick={() => { _setPage(p); setHash(p); }} style={{ padding: "6px 14px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 500, fontFamily: font,
                   background: page === p || (p === "markets" && (page === "strategy" || page === "trade")) ? C.bgHover : "transparent",
                   color: page === p || (p === "markets" && (page === "strategy" || page === "trade")) ? C.text : C.textSec }}>{p.charAt(0).toUpperCase() + p.slice(1)}</button>
@@ -594,6 +778,7 @@ export default function App() {
       {page === "markets" && <MarketsPage onSelect={id => { setMarket(id); setStrategy(null); _setPage("strategy"); setHash("strategy", id); }} />}
       {page === "strategy" && <StrategyPage market={market} onSelect={s => { setStrategy(s); _setPage("trade"); setHash("trade", market, s); }} onBack={() => { _setPage("markets"); setHash("markets"); }} />}
       {page === "trade" && strategy && <TradePage market={market} strategy={strategy} onBack={() => { _setPage("strategy"); setHash("strategy", market); }} w={w} />}
+      {page === "swap" && <SwapPage w={w} />}
       {page === "dashboard" && <DashboardPage w={w} />}
     </div>
   );
