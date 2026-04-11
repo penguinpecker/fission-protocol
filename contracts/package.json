@@ -1,0 +1,19 @@
+{
+  "name": "fission-protocol-contracts",
+  "version": "1.0.0",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.ts --network hederaMainnet",
+    "deploy:testnet": "hardhat run scripts/deploy.ts --network hederaTestnet",
+    "setup": "hardhat run scripts/setup-markets.ts --network hederaMainnet",
+    "setup:testnet": "hardhat run scripts/setup-markets.ts --network hederaTestnet"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.1.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.0",
+    "typescript": "^5.4.0"
+  }
+}
