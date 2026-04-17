@@ -44,7 +44,7 @@ const mkMini = (base: number, vol: number, n = 30) => Array.from({ length: n }, 
 
 interface MarketConfig { id: number; sym: string; name: string; protocol: string; tag: string; fallbackApy: number; }
 const MARKET_CFG: MarketConfig[] = [
-  { id: 0, sym: "HBAR-USDC LP", name: "SaucerSwap V2 LP", protocol: "SaucerSwap", tag: "LP", fallbackApy: 14.2 },
+  { id: 5, sym: "HBAR-USDC LP", name: "SaucerSwap V2 LP", protocol: "SaucerSwap", tag: "LP", fallbackApy: 14.2 },
   { id: 1, sym: "HBARX", name: "Stader Liquid Staking", protocol: "Stader Labs", tag: "LST", fallbackApy: 5.4 },
 ];
 

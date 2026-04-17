@@ -7,8 +7,8 @@
   "FissionAMMId": "0.0.10438414",
   "FissionRouter": "0x00000000000000000000000000000000009f471b",
   "FissionRouterId": "0.0.10438427",
-  "SY_SaucerSwapLP": "0x00000000000000000000000000000000009f4725",
-  "SY_SaucerSwapLPId": "0.0.10438437",
+  "SY_SaucerSwapLP": "0x00000000000000000000000000000000009f49a1",
+  "SY_SaucerSwapLPId": "0.0.10439073",
   "SY_HBARX": "0x00000000000000000000000000000000009f473a",
   "SY_HBARXId": "0.0.10438458",
   "deployer": "0x00000000000000000000000000000000009f2545",
@@ -24,8 +24,21 @@
       "id": 1,
       "name": "HBARX Staking",
       "sy": "0x00000000000000000000000000000000009f473a",
-      "maturity": "pending cooldown",
+      "maturity": 1784192755,
       "scalarRoot": 150
+    },
+    {
+      "id": 5,
+      "name": "SaucerSwap HBAR-USDC (seeded)",
+      "sy": "0x00000000000000000000000000000000009f49a1",
+      "pt": "0xD381BeeC9099C081358e9624ACA575b6B0C64183",
+      "yt": "0x8c5843cAed6192A32E374a54C25C6743bc5990Df",
+      "maturity": 1784208496,
+      "scalarRoot": 100,
+      "poolInitialized": true
     }
-  ]
+  ],
+  "SeedToken": "0x00000000000000000000000000000000009f499d",
+  "SeedTokenId": "0.0.10439069",
+  "SeededMarketId": 5
 }
