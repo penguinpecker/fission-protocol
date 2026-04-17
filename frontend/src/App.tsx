@@ -54,7 +54,7 @@ const STRATEGIES: Strategy[] = [
   { id: "yt", title: "Long yield", subtitle: "Buy YT", risk: "High", desc: "Leveraged bet on rising rates. Small capital, amplified returns." },
   { id: "split", title: "Split SY", subtitle: "Mint PT+YT", risk: "Medium", desc: "Deposit SY to mint equal PT + YT. Sell one side or LP with both." },
 ];
-const CONTRACTS = [["FissionCore", "0.0.10429842"], ["FissionAMM", "0.0.10429844"], ["FissionRouter", "0.0.10429846"]];
+const CONTRACTS = [["FissionCore", "0.0.10438400"], ["FissionAMM", "0.0.10438414"], ["FissionRouter", "0.0.10438427"]];
 
 function StrategyIcon({ id, size = 36 }: { id: string; size?: number }) {
   const c = C.silverLight;
