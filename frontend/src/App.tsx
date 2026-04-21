@@ -108,8 +108,7 @@ export default function App() {
     try {
       const count = await fetchMarketCount();
       const markets: (MarketData | null)[] = []; const pools: (PoolData | null)[] = [];
-      for (let i = 0; i < Math.min(count, MARKET_CFG.length); i++) { markets.push(await fetchMarketData(i)); pools.push(await fetchPoolData(i)); }
-      while (markets.length < MARKET_CFG.length) { markets.push(null); pools.push(null); }
+      for (let i = 0; i < MARKET_CFG.length; i++) { const mid = MARKET_CFG[i].id; if (mid < count) { markets.push(await fetchMarketData(mid)); pools.push(await fetchPoolData(mid)); } else { markets.push(null); pools.push(null); } }
       setChainMarkets(markets); setChainPools(pools);
     } catch (e) { console.error("Chain read failed:", e); }
     setLoading(false);
@@ -120,11 +119,12 @@ export default function App() {
     const b: Record<string, string> = {};
     for (let i = 0; i < MARKET_CFG.length; i++) {
       const m = chainMarkets[i]; if (!m) continue;
+      const mid = MARKET_CFG[i].id;
       b[`sy_${i}`] = await fetchTokenBalance(m.sy, wallet.address);
       b[`pt_${i}`] = await fetchTokenBalance(m.pt, wallet.address);
       b[`yt_${i}`] = await fetchTokenBalance(m.yt, wallet.address);
-      b[`lp_${i}`] = await fetchLPBalance(i, wallet.address);
-      b[`unclaimed_${i}`] = await fetchUnclaimed(i, wallet.address);
+      b[`lp_${i}`] = await fetchLPBalance(mid, wallet.address);
+      b[`unclaimed_${i}`] = await fetchUnclaimed(mid, wallet.address);
     }
     setUserBalances(b);
   }, [wallet.address, chainMarkets]);
@@ -145,6 +145,7 @@ export default function App() {
   };
 
   const market = getMarketDisplay(selMarket);
+  const marketId = MARKET_CFG[selMarket].id; // actual on-chain market ID
   const strategy = STRATEGIES.find(s => s.id === selStrategy)!;
   const preview = useMemo(() => {
     const amt = parseFloat(tradeAmt) || 0;
@@ -160,16 +161,16 @@ export default function App() {
     setTxStatus("pending"); setShowTx(true); setTxHash(""); setTxError("");
     try {
       let hash: string | null = null;
-      if (selStrategy === "split") { hash = await executeSplit(wallet.signer, selMarket, tradeAmt); }
-      else if (selStrategy === "pt") { if (!market.poolInit) { setTxError("AMM pool not initialized"); setTxStatus("error"); return; } hash = await executeBuyPT(wallet.signer, selMarket, tradeAmt); }
-      else if (selStrategy === "yt") { if (!market.poolInit) { setTxError("AMM pool not initialized"); setTxStatus("error"); return; } hash = await executeBuyYT(wallet.signer, selMarket, tradeAmt); }
+      if (selStrategy === "split") { hash = await executeSplit(wallet.signer, marketId, tradeAmt); }
+      else if (selStrategy === "pt") { if (!market.poolInit) { setTxError("AMM pool not initialized"); setTxStatus("error"); return; } hash = await executeBuyPT(wallet.signer, marketId, tradeAmt); }
+      else if (selStrategy === "yt") { if (!market.poolInit) { setTxError("AMM pool not initialized"); setTxStatus("error"); return; } hash = await executeBuyYT(wallet.signer, marketId, tradeAmt); }
       if (hash) { setTxHash(hash); setTxStatus("success"); refreshBalances(); loadUserBalances(); }
       else { setTxError("Transaction reverted — check your SY balance and approvals"); setTxStatus("error"); }
     } catch (e: any) { setTxError(e.message || "Unknown error"); setTxStatus("error"); }
   };
-  const handleClaimYield = async () => { if (!wallet.signer) return; setTxStatus("pending"); setShowTx(true); setTxHash(""); setTxError(""); try { const h = await executeClaimYield(wallet.signer, selMarket); if (h) { setTxHash(h); setTxStatus("success"); loadUserBalances(); } else { setTxError("Claim failed"); setTxStatus("error"); } } catch (e: any) { setTxError(e.message); setTxStatus("error"); } };
-  const handleRedeemPT = async () => { if (!wallet.signer) return; setTxStatus("pending"); setShowTx(true); setTxHash(""); setTxError(""); try { const h = await executeRedeemPT(wallet.signer, selMarket, userBalances[`pt_${selMarket}`]); if (h) { setTxHash(h); setTxStatus("success"); loadUserBalances(); } else { setTxError("Redeem failed"); setTxStatus("error"); } } catch (e: any) { setTxError(e.message); setTxStatus("error"); } };
-  const handleMerge = async () => { if (!wallet.signer) return; const a = Math.min(parseFloat(userBalances[`pt_${selMarket}`] || "0"), parseFloat(userBalances[`yt_${selMarket}`] || "0")).toString(); setTxStatus("pending"); setShowTx(true); setTxHash(""); setTxError(""); try { const h = await executeMerge(wallet.signer, selMarket, a); if (h) { setTxHash(h); setTxStatus("success"); loadUserBalances(); } else { setTxError("Merge failed"); setTxStatus("error"); } } catch (e: any) { setTxError(e.message); setTxStatus("error"); } };
+  const handleClaimYield = async () => { if (!wallet.signer) return; setTxStatus("pending"); setShowTx(true); setTxHash(""); setTxError(""); try { const h = await executeClaimYield(wallet.signer, marketId); if (h) { setTxHash(h); setTxStatus("success"); loadUserBalances(); } else { setTxError("Claim failed"); setTxStatus("error"); } } catch (e: any) { setTxError(e.message); setTxStatus("error"); } };
+  const handleRedeemPT = async () => { if (!wallet.signer) return; setTxStatus("pending"); setShowTx(true); setTxHash(""); setTxError(""); try { const h = await executeRedeemPT(wallet.signer, marketId, userBalances[`pt_${selMarket}`]); if (h) { setTxHash(h); setTxStatus("success"); loadUserBalances(); } else { setTxError("Redeem failed"); setTxStatus("error"); } } catch (e: any) { setTxError(e.message); setTxStatus("error"); } };
+  const handleMerge = async () => { if (!wallet.signer) return; const a = Math.min(parseFloat(userBalances[`pt_${selMarket}`] || "0"), parseFloat(userBalances[`yt_${selMarket}`] || "0")).toString(); setTxStatus("pending"); setShowTx(true); setTxHash(""); setTxError(""); try { const h = await executeMerge(wallet.signer, marketId, a); if (h) { setTxHash(h); setTxStatus("success"); loadUserBalances(); } else { setTxError("Merge failed"); setTxStatus("error"); } } catch (e: any) { setTxError(e.message); setTxStatus("error"); } };
 
   const Nav = ({ showBack = false }: { showBack?: boolean }) => (
     <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 32px", borderBottom: `1px solid ${C.border}`, backdropFilter: "blur(12px)", background: "rgba(9,9,11,0.8)", position: "sticky", top: 0, zIndex: 100 }}>
