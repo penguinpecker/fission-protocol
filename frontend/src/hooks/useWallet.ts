@@ -285,5 +285,5 @@ export function fmt(val: string | number, dp = 4): string {
   const n = typeof val === "string" ? parseFloat(val) : val;
   if (isNaN(n) || n === 0) return "0";
   if (n < 0.0001) return "<0.0001";
-  return n.toLocaleString("en-US", { maximumFractionDigits: dp, minimumFractionDigits: 2 });
+  return n.toLocaleString("en-US", { maximumFractionDigits: dp, minimumFractionDigits: Math.min(2, dp) });
 }
